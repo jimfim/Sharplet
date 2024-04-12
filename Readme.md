@@ -14,9 +14,29 @@ The goal of this project is to provide a simple way for developers to use C# to 
 - **Container Lifecycle Management**: Manage the lifecycle of containers running on the virtual node, including creation, deletion, and updates.
 - **Resource Management**: Monitor and manage resource allocation and utilization on the virtual node.
 
+## Purpose of thie Repository
+You won't find a functional providein this repository. this project is intended as a reference for other implementing 3rd party providers. the 
+Mock Provider provided just mocks running pods on the virutla kubelet without any system to back them up
+
+The Sharplet library provides an interface for managing the lifecycle of pods on a virtual node, including creation, deletion, and updates. It also includes methods for monitoring and managing resource allocation and utilization on the virtual node.
+
+The intention is that this repository will provide a nuget pacakge that you can consume in your own project to implement a Provider using the documented interfaces leaving you to worry about integrating with your intended provider, leaving the kubernetes management to us
+
+```bash
+public interface IPodLifeCycle
+{
+    Task CreatePodAsync(V1Pod pod, CancellationToken cancellationToken = default);
+    Task UpdatePodAsync(V1Pod pod, CancellationToken cancellationToken = default);
+    Task DeletePodAsync(V1Pod pod, CancellationToken cancellationToken = default);
+    Task<V1Pod?> GetPodAsync(string @namespace, string name, CancellationToken cancellationToken = default);
+    Task<V1PodStatus> GetPodStatusAsync(string @namespace, string name, CancellationToken cancellationToken = default);
+    Task<IEnumerable<V1Pod>> GetPodsAsync(CancellationToken cancellationToken = default);
+}
+```
+
 ## Getting Started
 
-Follow these instructions to get started with using C# Virtual Kubelet:
+Follow these instructions to get started with using Sharplet:
 
 ### Prerequisites
 
