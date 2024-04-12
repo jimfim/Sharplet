@@ -22,7 +22,7 @@ The Sharplet library provides an interface for managing the lifecycle of pods on
 
 The intention is that this repository will provide a nuget pacakge that you can consume in your own project to implement a Provider using the documented interfaces leaving you to worry about integrating with your intended provider, leaving the kubernetes management to us
 
-```bash
+```csharp
 public interface IPodLifeCycle
 {
     Task CreatePodAsync(V1Pod pod, CancellationToken cancellationToken = default);
