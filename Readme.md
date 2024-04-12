@@ -14,7 +14,7 @@ The goal of this project is to provide a simple way for developers to use C# to 
 - **Container Lifecycle Management**: Manage the lifecycle of containers running on the virtual node, including creation, deletion, and updates.
 - **Resource Management**: Monitor and manage resource allocation and utilization on the virtual node.
 
-## Purpose of thie Repository
+## Purpose of this Repository
 You won't find a functional providein this repository. this project is intended as a reference for other implementing 3rd party providers. the 
 Mock Provider provided just mocks running pods on the virutla kubelet without any system to back them up
 
