@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-C# Virtual Kubelet is an implementation of a Kubernetes node agent (similar to Virtual Kubelet) using C#. It allows Kubernetes clusters to seamlessly integrate with external systems or services by abstracting node management and pod execution.
+Sharplet is an implementation of a Kubernetes node agent (similar to Virtual Kubelet) using C#. It allows Kubernetes clusters to seamlessly integrate with external systems or services by abstracting node management and pod execution.
 
 ## Overview
 The goal of this project is to provide a simple way for developers to use C# to extend a Kubernetes clusters. The project is designed to be flexible and easy to use, allowing developers to quickly get started with integrating their own systems or services with Kubernetes.
