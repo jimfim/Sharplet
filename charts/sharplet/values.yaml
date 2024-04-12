@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: localhost/dotnet-kubelet
+  repository: localhost/sharplet
   pullPolicy: Never
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
@@ -23,7 +23,7 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: "vkcs-dotnet-kubelet"
+  name: "sharplet"
 
 podAnnotations: {}
 podLabels: {}
@@ -82,7 +82,7 @@ autoscaling:
 volumes:
 - name: credentials
   secret:
-    secretName: "vkcs-dotnet-kubelet"
+    secretName: "sharplet-dotnet-kubelet"
 
 
 volumeMounts:

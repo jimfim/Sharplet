@@ -7,7 +7,7 @@ using Sharplet.Provider.Mock;
 var builder = WebApplication.CreateBuilder(args);
  builder.Services.AddKubelet(new SharpConfig
  {
-     NodeName = "virtual-kubelet",
+     NodeName = "sharplet",
      StatusUpdateInterval = 10
  });
 builder.Services.AddSingleton<IPodLifeCycle, MockPodLifeCycle>();
