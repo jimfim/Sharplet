@@ -129,7 +129,7 @@ public class MockPodController : IPodController
         var response = new List<string>();
         for (int i = 0; i < 10; i++)
         {
-            response.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {@namespace} {podname} {containername} Log message {i}");
+            response.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {@namespace} {podname} {containername} Log message from Provider {i}");
         }
 
         return Task.FromResult(GetLogs());

@@ -1,0 +1,10 @@
+﻿{
+  "profiles": {
+    "Sharplet": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

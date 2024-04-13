@@ -14,9 +14,12 @@ builder.Services.AddKubelet(new SharpConfig
  NodeMaxPodCount = 6
 });
 builder.Logging.AddJsonConsole();
+builder.Logging.AddConsole();
 builder.Services.AddSingleton<IPodController, MockPodController>();
 builder.Services.AddSingleton<INodeController, MockNodeController>();
-builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
+builder.Configuration.SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json")
+    .AddJsonFile($"appsettings.{builder.Environment}.json", optional: true, true);
 builder.Configuration.AddEnvironmentVariables();
 var config = KubernetesClientConfiguration.IsInCluster()
     ? KubernetesClientConfiguration.InClusterConfig()
@@ -26,8 +29,8 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(10255);
     options.ListenAnyIP(10250, listenOptions =>
     {
-        var cert = File.ReadAllText("/etc/virtual-kubelet/cert.pem"); 
-        var key = File.ReadAllText("/etc/virtual-kubelet/key.pem");
+        var cert = File.ReadAllText("/etc/sharplet/cert.pem"); 
+        var key = File.ReadAllText("/etc/sharplet/key.pem");
         var x509 = X509Certificate2.CreateFromPem(cert, key);
         listenOptions.UseHttps(adapterOptions =>
         {
@@ -71,18 +74,20 @@ var app = builder.Build();
 app.MapGet("/containerLogs/{podNamespace}/{podID}/{containerName}", 
     async (HttpContext context, string podNamespace, string podID, string containerName) =>
 {
-    var service = app.Services.GetRequiredService<IPodController>();
+    var random = new Random();
     context.Response.Headers.Append("Content-Type", "text/plain");
     context.Response.Headers.Append("Transfer-Encoding", "chunked");
-    await foreach (var logEntry in await service.GetContainerLogs(podNamespace, podID, containerName, default))
+    for (var i = 0; i < 10; i++)
     {
-        await context.Response.WriteAsync(logEntry);
-        await context.Response.Body.FlushAsync();
+         var logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {podNamespace} {podID} {containerName} Log message {i}\n";
+         await context.Response.WriteAsync(logMessage);
+         await context.Response.Body.FlushAsync();
+         await Task.Delay(random.Next(1000, 3000)); // Simulate delays between log messages
     }
+
     await context.Response.CompleteAsync();
 });
 
 app.MapGet("/configz", () => "Hello World!");
-
 app.MapGet("/runningpods", () => "Hello World!");
 app.Run();
