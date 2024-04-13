@@ -1,0 +1,97 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    # Setup
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Fetch all history for all tags and branches
+      run: git fetch --prune --unshallow
+
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v0
+      with:
+        versionSpec: '5.x'
+
+    - name: Determine Version
+      id:   gitversion # id to later be referenced
+      uses: gittools/actions/gitversion/execute@v0
+
+      
+    - name: Configure Git
+      run: |
+        git config user.name "$GITHUB_ACTOR"
+        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+    
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 8.x
+        source-url: https://nuget.pkg.github.com/jimfim/index.json
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        
+    # Build
+    - name: Build and Test
+      run: |
+          dotnet build --configuration Release
+          dotnet test --configuration Release
+
+    - name: SonarCloud Scan
+      uses: sonarsource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    #release
+        
+    - name: push
+      run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json"
+
+    ## Docker 
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        file: Dockerfile
+        push: true
+        tags: jimfim/sharplet:${{ steps.gitversion.outputs.SemVer }}
+        
+    ## helm
+    - name: Helm Chart Update, Package and Push
+      run: |
+        cd ./charts/sharplet
+        sed -i "s/appVersion\: 0\.0\.0/appVersion\: ${{ steps.gitversion.outputs.SemVer }}/" Chart.yaml
+        sed -i "s/version\: 0\.0\.0/version\: ${{ steps.gitversion.outputs.SemVer }}/" Chart.yaml
+        cat Chart.yaml
+
+    - name: Run chart-releaser
+      uses: helm/chart-releaser-action@v1.6.0
+      env:
+        CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
