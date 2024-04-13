@@ -60,13 +60,14 @@ jobs:
         
     # Build
     - name: Build and Test
-      run: |
-          dotnet build --configuration Release ./src
-          
+      run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src
+
     #release
         
     - name: push
-      run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json"
+      env:
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
 
     ## Docker 
     - name: Build and push
