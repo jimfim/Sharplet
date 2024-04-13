@@ -38,6 +38,6 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          file: Containerfile
+          file: Dockerfile
           push: true
           tags: jimfim/sharplet:${{ steps.gitversion.outputs.SemVer }}
