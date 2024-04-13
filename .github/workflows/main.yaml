@@ -70,7 +70,10 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
         projectBaseDir: ./src
-        
+        args: >
+        -Dsonar.organization=jimfim
+        -Dsonar.projectKey=jimfim_Sharplet
+        -Dsonar.verbose=true
     #release
         
     - name: push
