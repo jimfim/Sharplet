@@ -8,9 +8,8 @@ public static class SharpletExtensions
     {
         collection.AddHostedService<NodeControllerService>();
         collection.AddHostedService<EventWatcherService>();
-        collection.AddHostedService<PodStatusTrackerService>();
+        collection.AddHostedService<PodControllerService>();
         collection.AddSingleton(configuration);
-        collection.AddSingleton<INodeController, NodeController>();
         collection.AddSingleton<IEventWatcher, EventWatcher>();
         return collection;
     }
@@ -19,5 +18,7 @@ public static class SharpletExtensions
 public class SharpConfig
 {
     public string NodeName { get; set; } = "sharplet";
-    public int StatusUpdateInterval { get; set; } = 10;
+    public int PodStatusUpdateInterval { get; set; } = 10;
+    public int NodeStatusUpdateInterval { get; set; } = 30;
+    public int NodeMaxPodCount { get; set; } = 10;
 }

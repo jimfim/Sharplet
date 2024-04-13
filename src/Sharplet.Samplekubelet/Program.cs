@@ -1,28 +1,31 @@
 ﻿using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using k8s;
-using Sharplet.Abstractions;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Sharplet.Core;
 using Sharplet.Provider.Mock;
 
 var builder = WebApplication.CreateBuilder(args);
- builder.Services.AddKubelet(new SharpConfig
- {
-     NodeName = "sharplet",
-     StatusUpdateInterval = 10
- });
-builder.Services.AddSingleton<IPodLifeCycle, MockPodLifeCycle>();
+builder.Services.AddKubelet(new SharpConfig
+{
+ NodeName = "sharplet",
+ PodStatusUpdateInterval = 15,
+ NodeStatusUpdateInterval = 30,
+ NodeMaxPodCount = 5
+});
+builder.Logging.AddJsonConsole();
+builder.Services.AddSingleton<IPodController, MockPodController>();
+builder.Services.AddSingleton<INodeController, MockNodeController>();
 builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
-builder.Configuration.AddJsonFile("appsettings.json").AddEnvironmentVariables();
+builder.Configuration.AddEnvironmentVariables();
 var config = KubernetesClientConfiguration.IsInCluster()
     ? KubernetesClientConfiguration.InClusterConfig()
     : KubernetesClientConfiguration.BuildConfigFromConfigFile();
-ServicePointManager.ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true;
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(10255);
     options.ListenAnyIP(10250, listenOptions =>
     {
-#if !DEBUG
         var cert = File.ReadAllText("/etc/virtual-kubelet/cert.pem"); 
         var key = File.ReadAllText("/etc/virtual-kubelet/key.pem");
         var x509 = X509Certificate2.CreateFromPem(cert, key);
@@ -32,7 +35,6 @@ builder.WebHost.ConfigureKestrel(options =>
             adapterOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
             adapterOptions.ClientCertificateValidation = (certificate, chain, valid) => true;
         });    
-#endif
     });
 });
 
@@ -69,15 +71,13 @@ var app = builder.Build();
 app.MapGet("/containerLogs/{podNamespace}/{podID}/{containerName}", 
     async (HttpContext context, string podNamespace, string podID, string containerName) =>
 {
-    var random = new Random();
+    var service = app.Services.GetRequiredService<IPodController>();
     context.Response.Headers.Append("Content-Type", "text/plain");
     context.Response.Headers.Append("Transfer-Encoding", "chunked");
-    for (var i = 0; i < 10; i++)
+    await foreach (var logEntry in await service.GetContainerLogs(podNamespace, podID, containerName, default))
     {
-        var logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {podNamespace} {podID} {containerName} Log message {i}\n";
-        await context.Response.WriteAsync(logMessage);
+        await context.Response.WriteAsync(logEntry);
         await context.Response.Body.FlushAsync();
-        await Task.Delay(random.Next(1000, 3000)); // Simulate delays between log messages
     }
     await context.Response.CompleteAsync();
 });

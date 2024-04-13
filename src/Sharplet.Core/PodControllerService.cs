@@ -2,29 +2,28 @@ using k8s;
 using k8s.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Sharplet.Abstractions;
 
 namespace Sharplet.Core;
 
-public class PodStatusTrackerService : BackgroundService
+public class PodControllerService : BackgroundService
 {
     private readonly SharpConfig _config;
     private readonly IKubernetes _kubernetes;
-    private readonly ILogger<PodStatusTrackerService> _logger;
-    private readonly IPodLifeCycle _podLifeCycle;
+    private readonly ILogger<PodControllerService> _logger;
+    private readonly IPodController _podController;
 
-    public PodStatusTrackerService(SharpConfig config, IPodLifeCycle podLifeCycle,
-        ILogger<PodStatusTrackerService> logger, IKubernetes kubernetes)
+    public PodControllerService(SharpConfig config, IPodController podController,
+        ILogger<PodControllerService> logger, IKubernetes kubernetes)
     {
         _config = config;
-        _podLifeCycle = podLifeCycle;
+        _podController = podController;
         _logger = logger;
         _kubernetes = kubernetes;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_config.StatusUpdateInterval * 1000));
+        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_config.PodStatusUpdateInterval * 1000));
         _logger.LogInformation("Starting status tracker");
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -41,7 +40,7 @@ public class PodStatusTrackerService : BackgroundService
 
             foreach (var pod in apiPods.Body)
             {
-                var status = await _podLifeCycle.GetPodStatusAsync(pod.Namespace(), pod.Name(), stoppingToken);
+                var status = await _podController.GetPodStatusAsync(pod.Namespace(), pod.Name(), stoppingToken);
                 var apipod = apiPods.Body.Items.FirstOrDefault(x => x.Name() == pod.Name());
                 if (apipod == null) continue;
                 apipod.Status = status;

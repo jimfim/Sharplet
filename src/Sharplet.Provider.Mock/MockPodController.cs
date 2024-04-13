@@ -1,19 +1,19 @@
 ﻿using k8s;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
-using Sharplet.Abstractions;
+using Sharplet.Core;
 
 namespace Sharplet.Provider.Mock;
 
 /// <summary>
 /// This just updates the apiserver to say everything is running smoothly. even though there is nothing backing it.
 /// </summary>
-public class MockPodLifeCycle : IPodLifeCycle
+public class MockPodController : IPodController
 {
-    private readonly ILogger<MockPodLifeCycle> _logger;
+    private readonly ILogger<MockPodController> _logger;
     private readonly IKubernetes _kubernetes;
 
-    public MockPodLifeCycle(ILogger<MockPodLifeCycle> logger, IKubernetes kubernetes)
+    public MockPodController(ILogger<MockPodController> logger, IKubernetes kubernetes)
     {
         _logger = logger;
         _kubernetes = kubernetes;
@@ -122,5 +122,24 @@ public class MockPodLifeCycle : IPodLifeCycle
         _logger.LogInformation("GetPodsAsync");
         var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync("default", cancellationToken: cancellationToken);
         return pods.Items;
+    }
+    
+    public Task<IAsyncEnumerable<string>> GetContainerLogs(string @namespace, string podname, string containername, CancellationToken cancellationToken)
+    {
+        var response = new List<string>();
+        for (int i = 0; i < 10; i++)
+        {
+            response.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {@namespace} {podname} {containername} Log message {i}");
+        }
+
+        return Task.FromResult(GetLogs());
+        async IAsyncEnumerable<string> GetLogs()
+        {
+            foreach (var entry in response)
+            {
+                await Task.Delay(1000, cancellationToken);
+                yield return entry;
+            }
+        }
     }
 }

@@ -2,10 +2,12 @@
 
 using k8s.Models;
 
-namespace Sharplet.Abstractions;
+namespace Sharplet.Core;
 
-// This interface provides methods for managing the lifecycle of pods on a virtual node.
-public interface IPodLifeCycle
+/// <summary>
+/// This interface provides methods for managing the lifecycle of pods on a virtual node.
+/// </summary>
+public interface IPodController
 {
     /// <summary>
     /// Creates a new pod and schedules it onto the virtual node.
@@ -55,4 +57,7 @@ public interface IPodLifeCycle
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     Task<IEnumerable<V1Pod>> GetPodsAsync(CancellationToken cancellationToken = default);
+
+    Task<IAsyncEnumerable<string>> GetContainerLogs(string @namespace, string podname, string containername,
+        CancellationToken cancellationToken);
 }

@@ -25,7 +25,13 @@ public class NodeControllerService : BackgroundService
 
     public override async Task<Task> StartAsync(CancellationToken cancellationToken)
     {
-        await _nodeController.RegisterNodeAsync(_config.NodeName);
+        await _nodeController.CreateNodeAsync(new V1Node()
+        {
+            Metadata = new V1ObjectMeta()
+            {
+                Name = _config.NodeName
+            }
+        }, cancellationToken);
         //PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_config.StatusUpdateInterval * 1000));
         // _logger.LogInformation("Starting status tracker");
         //
@@ -53,11 +59,11 @@ public class NodeControllerService : BackgroundService
         // await elector.RunUntilLeadershipLostAsync(stoppingToken);
         
         _logger.LogInformation("Starting status tracker");
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_config.StatusUpdateInterval * 1000));
+        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_config.PodStatusUpdateInterval * 1000));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             var node = await _kubernetes.CoreV1.ReadNodeWithHttpMessagesAsync(_config.NodeName, cancellationToken: stoppingToken);
-            var status = await _nodeController.GetNodeStatusAsync(_config.NodeName);
+            var status = await _nodeController.GetNodeStatusAsync(_config.NodeName, stoppingToken);
             node.Body.Status = status;
             await _kubernetes.CoreV1.PatchNodeStatusAsync(new V1Patch(node.Body, V1Patch.PatchType.MergePatch), _config.NodeName, cancellationToken: stoppingToken);
         }

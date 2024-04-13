@@ -82,7 +82,7 @@ autoscaling:
 volumes:
 - name: credentials
   secret:
-    secretName: "sharplet-dotnet-kubelet"
+    secretName: "sharplet"
 
 
 volumeMounts:

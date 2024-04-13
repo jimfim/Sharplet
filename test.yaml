@@ -30,5 +30,5 @@ spec:
         - name: "hello"
           value: "world"
       tolerations:
-      - key: kubernetes.io/sharpkube
+      - key: kubernetes.io/sharplet
         operator: Exists

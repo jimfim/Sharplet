@@ -1,7 +1,6 @@
 using k8s;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
-using Sharplet.Abstractions;
 
 namespace Sharplet.Core;
 
@@ -15,14 +14,14 @@ internal class EventWatcher : IEventWatcher
     private readonly SharpConfig _config;
     private readonly IKubernetes _kubernetes;
     private readonly ILogger<EventWatcher> _logger;
-    private readonly IPodLifeCycle _podLifeCycle;
+    private readonly IPodController _podController;
 
-    public EventWatcher(ILogger<EventWatcher> logger, IKubernetes kubernetes, IPodLifeCycle podLifeCycle,
+    public EventWatcher(ILogger<EventWatcher> logger, IKubernetes kubernetes, IPodController podController,
         SharpConfig config)
     {
         _logger = logger;
         _kubernetes = kubernetes;
-        _podLifeCycle = podLifeCycle;
+        _podController = podController;
         _config = config;
     }
 
@@ -36,7 +35,7 @@ internal class EventWatcher : IEventWatcher
             {
                 case WatchEventType.Added:
                     _logger.LogInformation("Item Added {Name} on Node {Node}", item.Name(), item.Spec.NodeName);
-                    await _podLifeCycle.CreatePodAsync(item);
+                    await _podController.CreatePodAsync(item);
                     await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
                         new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
                     await _kubernetes.CoreV1.CreateNamespacedEventAsync(new Corev1Event(new V1ObjectReference(
@@ -50,7 +49,7 @@ internal class EventWatcher : IEventWatcher
                     break;
                 case WatchEventType.Modified:
                     _logger.LogInformation("Item Modified {Name}", item.Name());
-                    await _podLifeCycle.UpdatePodAsync(item);
+                    await _podController.UpdatePodAsync(item);
                     await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
                         new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
                     _logger.LogInformation("Publishing Pod Event");
@@ -65,7 +64,7 @@ internal class EventWatcher : IEventWatcher
                     break;
                 case WatchEventType.Deleted:
                     _logger.LogInformation("Item Deleted {Name}", item.Name());
-                    await _podLifeCycle.DeletePodAsync(item);
+                    await _podController.DeletePodAsync(item);
                     break;
                 case WatchEventType.Error:
                     _logger.LogInformation("Item Error {Name}", item.Name());

@@ -12,7 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Sharplet.Abstractions\Sharplet.Abstractions.csproj" />
+        <ProjectReference Include="..\Sharplet.Core\Sharplet.Core.csproj" />
     </ItemGroup>
 
 </Project>
