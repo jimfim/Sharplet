@@ -11,7 +11,7 @@ builder.Services.AddKubelet(new SharpConfig
  NodeName = "sharplet",
  PodStatusUpdateInterval = 15,
  NodeStatusUpdateInterval = 30,
- NodeMaxPodCount = 5
+ NodeMaxPodCount = 6
 });
 builder.Logging.AddJsonConsole();
 builder.Services.AddSingleton<IPodController, MockPodController>();
