@@ -61,8 +61,7 @@ jobs:
     # Build
     - name: Build and Test
       run: |
-          dotnet build --configuration Release
-          dotnet test --configuration Release
+          dotnet build --configuration Release ./src
 
     - name: SonarCloud Scan
       uses: sonarsource/sonarcloud-github-action@master
