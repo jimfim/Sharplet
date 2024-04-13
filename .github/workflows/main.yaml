@@ -6,9 +6,9 @@ name: CI
 # events but only for the master branch
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -82,7 +82,7 @@ jobs:
         file: Dockerfile
         push: true
         tags: jimfim/sharplet:${{ steps.gitversion.outputs.SemVer }}
-        
+
     ## helm
     - name: Helm Chart Update, Package and Push
       run: |
