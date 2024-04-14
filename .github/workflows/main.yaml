@@ -64,7 +64,7 @@ jobs:
 
     #release
         
-    - name: push
+    - name: push nuget packages
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
