@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  sharplet:
+  - apiVersion: v2
+    appVersion: 0.1.0-alpha.26
+    created: "2024-04-14T16:58:08.217829103Z"
+    description: A Helm chart for Kubernetes
+    digest: 098efcf9aca25a1db0842d0027ea41662f53a52f95bae2cf89fddd7a2c31fcdd
+    name: sharplet
+    type: application
+    urls:
+    - https://github.com/jimfim/Sharplet/releases/download/sharplet-0.1.0-alpha.26/sharplet-0.1.0-alpha.26.tgz
+    version: 0.1.0-alpha.26
+generated: "2024-04-14T16:58:08.217842328Z"
