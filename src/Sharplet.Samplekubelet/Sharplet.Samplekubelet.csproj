@@ -16,7 +16,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Sharplet.Core\Sharplet.Core.csproj" />
-        <ProjectReference Include="..\Sharplet.Provider.Mock\Sharplet.Provider.Mock.csproj" />
     </ItemGroup>
 
     <ItemGroup>

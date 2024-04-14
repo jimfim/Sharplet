@@ -6,6 +6,8 @@ public static class SharpletExtensions
 {
     public static IServiceCollection AddKubelet(this IServiceCollection collection, SharpConfig configuration)
     {
+        collection.AddSingleton<IPodController, MockPodController>();
+        collection.AddSingleton<INodeController, MockNodeController>();
         collection.AddHostedService<NodeControllerService>();
         collection.AddHostedService<EventWatcherService>();
         collection.AddHostedService<PodControllerService>();

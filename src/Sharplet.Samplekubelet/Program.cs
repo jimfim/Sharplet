@@ -3,7 +3,6 @@ using System.Security.Cryptography.X509Certificates;
 using k8s;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Sharplet.Core;
-using Sharplet.Provider.Mock;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddKubelet(new SharpConfig
@@ -15,8 +14,7 @@ builder.Services.AddKubelet(new SharpConfig
 });
 builder.Logging.AddJsonConsole();
 builder.Logging.AddConsole();
-builder.Services.AddSingleton<IPodController, MockPodController>();
-builder.Services.AddSingleton<INodeController, MockNodeController>();
+
 builder.Configuration.SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json")
     .AddJsonFile($"appsettings.{builder.Environment}.json", optional: true, true);
