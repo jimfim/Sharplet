@@ -11,6 +11,7 @@ public class PodControllerService : BackgroundService
     private readonly IKubernetes _kubernetes;
     private readonly ILogger<PodControllerService> _logger;
     private readonly IPodController _podController;
+    private readonly string podnamespace;
 
     public PodControllerService(SharpConfig config, IPodController podController,
         ILogger<PodControllerService> logger, IKubernetes kubernetes)
@@ -19,6 +20,7 @@ public class PodControllerService : BackgroundService
         _podController = podController;
         _logger = logger;
         _kubernetes = kubernetes;
+        podnamespace = Environment.GetEnvironmentVariable("POD_NAMESPACE") ?? "default";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,14 +31,8 @@ public class PodControllerService : BackgroundService
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             var apiPods =
-                await _kubernetes.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default",
+                await _kubernetes.CoreV1.ListNamespacedPodWithHttpMessagesAsync(podnamespace,
                     cancellationToken: stoppingToken);
-            _logger.LogInformation("tracker updating");
-            //var pods = await _podLifeCycle.GetPodsAsync(stoppingToken);
-            // if (pods.IsNullOrEmpty())
-            // {
-            //     continue;
-            // }
 
             foreach (var pod in apiPods.Body)
             {

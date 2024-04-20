@@ -36,29 +36,29 @@ internal class EventWatcher : IEventWatcher
                 case WatchEventType.Added:
                     _logger.LogInformation("Item Added {Name} on Node {Node}", item.Name(), item.Spec.NodeName);
                     await _podController.CreatePodAsync(item);
-                    await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
-                        new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
+                    // await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
+                    //     new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
                     await _kubernetes.CoreV1.CreateNamespacedEventAsync(new Corev1Event(new V1ObjectReference(
                                 item.ApiVersion, string.Empty, item.Kind, item.Name(),
                                 item.Namespace(),
                                 item.ResourceVersion(), item.Uid()),
                             new V1ObjectMeta { GenerateName = "Pod Created" }, reason: "Started",
-                            reportingComponent: "virtual-kubelet", message: "pod started", type: "Normal"),
+                            reportingComponent: _config.NodeName, message: "pod started", type: "Normal"),
                         item.Namespace());
                     _logger.LogInformation("Item Added done...");
                     break;
                 case WatchEventType.Modified:
                     _logger.LogInformation("Item Modified {Name}", item.Name());
                     await _podController.UpdatePodAsync(item);
-                    await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
-                        new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
+                    // await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
+                    //     new V1Patch(item, V1Patch.PatchType.MergePatch), item.Name(), item.Namespace());
                     _logger.LogInformation("Publishing Pod Event");
                     await _kubernetes.CoreV1.CreateNamespacedEventAsync(new Corev1Event(new V1ObjectReference(
                                 item.ApiVersion, string.Empty, item.Kind, item.Name(),
                                 item.Namespace(),
                                 item.ResourceVersion(), item.Uid()),
                             new V1ObjectMeta { GenerateName = "Pod Created" }, reason: "Started",
-                            reportingComponent: "virtual-kubelet", message: "pod started", type: "Normal"),
+                            reportingComponent: _config.NodeName, message: "pod started", type: "Normal"),
                         item.Namespace());
                     _logger.LogInformation("Item Added done...");
                     break;

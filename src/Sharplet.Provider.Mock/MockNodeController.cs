@@ -24,7 +24,7 @@ public class MockNodeController : INodeController
 
         try
         {
-            var localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? "127.0.0.1";
+            var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
             var response = await _kubernetes.CoreV1.CreateNodeAsync(new V1Node
             {
                 Metadata = new V1ObjectMeta
@@ -106,7 +106,7 @@ public class MockNodeController : INodeController
 
     public Task<V1NodeStatus> GetNodeStatusAsync(string nodeName, CancellationToken cancellationToken = default)
     {
-        var localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? "127.0.0.1";
+        var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
         return Task.FromResult(new V1NodeStatus
         {
             Addresses = new List<V1NodeAddress>
