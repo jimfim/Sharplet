@@ -3,23 +3,46 @@
 name: CI
 
 # Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
+# events for the main and develop branches
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+  # Runs on every push and pull request. Make the "build" check required on
+  # protected branches (Settings > Branches) so a failing build blocks merges.
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    # Setup
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 8.x
+        source-url: https://nuget.pkg.github.com/jimfim/index.json
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    # Build
+    - name: Build and Test
+      run: dotnet build src -c Release
+
+  # Only runs on pushes to main/develop (never on pull requests), so a failed
+  # publish can neither block a merge nor leak artifacts from a PR.
+  # Requires a successful build first.
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
     - name: Checkout
       uses: actions/checkout@v3
 
@@ -35,7 +58,6 @@ jobs:
       id:   gitversion # id to later be referenced
       uses: gittools/actions/gitversion/execute@v0
 
-      
     - name: Configure Git
       run: |
         git config user.name "$GITHUB_ACTOR"
@@ -49,7 +71,7 @@ jobs:
 
     - name: Install Helm
       uses: azure/setup-helm@v3
-    
+
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v1
       with:
@@ -57,25 +79,25 @@ jobs:
         source-url: https://nuget.pkg.github.com/jimfim/index.json
       env:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        
+
     # Build
     - name: Build and Test
       run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src
 
     #release
-        
+
     - name: push nuget packages
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
 
-    ## Docker 
+    ## Docker
     - name: Build and push
       uses: docker/build-push-action@v5
       with:
         file: Dockerfile
         push: true
-        tags: jimfim/sharplet:${{ steps.gitversion.outputs.SemVer }}
+        tags: jimjim/sharplet:${{ steps.gitversion.outputs.SemVer }}
 
     ## helm
     - name: Helm Chart Update, Package and Push

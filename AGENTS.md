@@ -23,7 +23,7 @@ Consequences for how you work here:
 | `src/Sharplet.CSR` | Console helper for the kubelet certificate signing request flow. |
 | `charts/sharplet` | Helm chart that deploys the Samplekubelet image. |
 | `Dockerfile` | Multi-stage .NET 8 build → `aspnet:8.0` runtime. |
-| `.github/workflows/main.yaml` | CI: build + GitVersion + NuGet push (GitHub Packages) + Docker push + Helm chart-releaser. Runs on push to `main`/`develop` and PRs to `main`. |
+| `.github/workflows/main.yaml` | CI: `build` job (runs on push and PRs to `main`/`develop`) and `release` job (push only: GitVersion + NuGet push to GitHub Packages + Docker push + Helm chart-releaser). The `build` check should be required on protected branches so a failing build blocks merges. |
 | `.github/workflows/sonarcloud.yaml` | SonarCloud analysis on every pull request. |
 | `test.yaml` | Sample workload manifest for local cluster testing. |
 | `.editorconfig` | **Source of truth for all formatting/style** — kept in line with the dotnet/sdk style rules. |
