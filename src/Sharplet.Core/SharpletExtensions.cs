@@ -28,8 +28,9 @@ public static class SharpletExtensions
     }
 
     /// <summary>
-    /// Maps the kubelet API endpoints (e.g. <c>/containerLogs/{namespace}/{pod}/{container}</c>)
-    /// onto the application. Must be called after <c>Build()</c>, before <c>Run()</c>.
+    /// Maps the kubelet API endpoints (<c>/containerLogs/{namespace}/{pod}/{container}</c>) and the
+    /// health probes (<c>/livez</c>, <c>/readyz</c>, <c>/healthz</c>) onto the application. The probes
+    /// are designed for the read-only 10255 port: they require no client certificate.
     /// </summary>
     /// <param name="app"></param>
     /// <returns></returns>
@@ -51,7 +52,21 @@ public static class SharpletExtensions
 
                 await context.Response.CompleteAsync();
             });
+        app.MapGet("/livez", () => Results.Ok("alive"));
+        app.MapGet("/readyz", (IServiceProvider services) => KubeletReadyResult(services));
+        app.MapGet("/healthz", (IServiceProvider services) => KubeletReadyResult(services));
         return app;
+    }
+
+    private static IResult KubeletReadyResult(IServiceProvider services)
+    {
+        // Ready once the replica is synchronized with the node lease — either it is the
+        // leader itself or it has observed a leader. Until then it cannot safely run the
+        // kubelet status loops, so it must not count as available.
+        LeaderElectionService? election = services.GetService<LeaderElectionService>();
+        return election is not null && (election.IsLeader || election.LeaderIdentity is not null)
+            ? Results.Ok("ready")
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
     private static WebApplicationBuilder ConfigureKubeletListeners(this WebApplicationBuilder builder)

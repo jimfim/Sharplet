@@ -26,6 +26,12 @@ public class LeaderElectionService : BackgroundService
     /// </summary>
     public bool IsLeader => _elector?.IsLeader() ?? false;
 
+    /// <summary>
+    /// The identity of the current leader of the node lease — this instance or a peer.
+    /// Null until the lease has been observed for the first time.
+    /// </summary>
+    public string? LeaderIdentity => _elector?.GetLeader();
+
     // The kubelet's lease defaults (renew every 10s, node considered down 40s after the last
     // renewal) keep the lease valid as the node's liveness signal.
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(40);

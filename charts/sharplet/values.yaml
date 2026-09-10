@@ -100,6 +100,9 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+# Prefer spreading replicas across nodes (see the deployment template); supply
+# .Values.affinity to override.
+podAntiAffinity: true
 
 env:
 - name: ASPNETCORE_URLS
