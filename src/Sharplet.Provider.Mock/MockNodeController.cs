@@ -90,7 +90,9 @@ public class MockNodeController : INodeController
         }
         catch (HttpOperationException e)
         {
-            if (e.Response.StatusCode == HttpStatusCode.OK || e.Response.StatusCode == HttpStatusCode.Conflict) return;
+            if (e.Response.StatusCode == HttpStatusCode.Conflict) return;
+            _logger.LogError(e, "creating node {NodeName} failed with status code {StatusCode}", node.Name(), e.Response.StatusCode);
+            throw;
         }
     }
 
