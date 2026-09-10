@@ -16,4 +16,5 @@ builder.AddVirtualKubelet(new SharpConfig
 });
 
 var app = builder.Build();
+app.MapKubeletEndpoints();
 app.Run();

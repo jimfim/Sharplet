@@ -11,42 +11,39 @@ namespace Sharplet.Core;
 
 public static class SharpletExtensions
 {
+    /// <summary>
+    /// Registers the virtual kubelet services (kubernetes client, controllers, hosted services)
+    /// and the Kestrel listeners (10255 http, 10250 https with client certs) on the builder.
+    /// Call <see cref="MapKubeletEndpoints(WebApplication)"/> on the application after
+    /// <c>Build()</c> to expose the kubelet API endpoints.
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <param name="config"></param>
+    /// <returns></returns>
     public static WebApplicationBuilder AddVirtualKubelet(this WebApplicationBuilder builder, SharpConfig config)
     {
-        builder.ConfigureKubeletEndpoints(config);
+        builder.ConfigureKubeletListeners();
         builder.AddVirtualKubeletServices(config);
         return builder;
     }
 
-    private static WebApplicationBuilder ConfigureKubeletEndpoints(this WebApplicationBuilder builder,
-        SharpConfig configuration)
+    /// <summary>
+    /// Maps the kubelet API endpoints (e.g. <c>/containerLogs/{namespace}/{pod}/{container}</c>)
+    /// onto the application. Must be called after <c>Build()</c>, before <c>Run()</c>.
+    /// </summary>
+    /// <param name="app"></param>
+    /// <returns></returns>
+    public static WebApplication MapKubeletEndpoints(this WebApplication app)
     {
-        builder.WebHost.ConfigureKestrel(options =>
-        {
-            options.ListenAnyIP(10255);
-            options.ListenAnyIP(10250, listenOptions =>
-            {
-                var cert = File.ReadAllText("/etc/sharplet/cert.pem"); 
-                var key = File.ReadAllText("/etc/sharplet/key.pem");
-                var x509 = X509Certificate2.CreateFromPem(cert, key);
-                listenOptions.UseHttps(adapterOptions =>
-                {
-                    adapterOptions.ServerCertificate = x509;
-                    adapterOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
-                    adapterOptions.ClientCertificateValidation = (certificate, chain, valid) => true;
-                });    
-            });
-        });
-        var app = builder.Build();
-        app.MapGet("/containerLogs/{podNamespace}/{podID}/{containerName}", 
+        app.MapGet("/containerLogs/{podNamespace}/{podID}/{containerName}",
             async (HttpContext context, string podNamespace, string podID, string containerName) =>
             {
-                var random = new Random();
+                Random random = new();
                 context.Response.Headers.Append("Content-Type", "text/plain");
                 context.Response.Headers.Append("Transfer-Encoding", "chunked");
-                for (var i = 0; i < 10; i++)
+                for (int i = 0; i < 10; i++)
                 {
-                    var logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {podNamespace} {podID} {containerName} Log message {i}\n";
+                    string logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {podNamespace} {podID} {containerName} Log message {i}\n";
                     await context.Response.WriteAsync(logMessage);
                     await context.Response.Body.FlushAsync();
                     await Task.Delay(random.Next(1000, 3000)); // Simulate delays between log messages
@@ -54,9 +51,28 @@ public static class SharpletExtensions
 
                 await context.Response.CompleteAsync();
             });
-        app.Run();
-        return builder;
+        return app;
+    }
 
+    private static WebApplicationBuilder ConfigureKubeletListeners(this WebApplicationBuilder builder)
+    {
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(10255);
+            options.ListenAnyIP(10250, listenOptions =>
+            {
+                string cert = File.ReadAllText(Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? "/etc/sharplet/cert.pem");
+                string key = File.ReadAllText(Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? "/etc/sharplet/key.pem");
+                X509Certificate2 x509 = X509Certificate2.CreateFromPem(cert, key);
+                listenOptions.UseHttps(adapterOptions =>
+                {
+                    adapterOptions.ServerCertificate = x509;
+                    adapterOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+                    adapterOptions.ClientCertificateValidation = (certificate, chain, valid) => true;
+                });
+            });
+        });
+        return builder;
     }
     
     private static WebApplicationBuilder AddVirtualKubeletServices(this WebApplicationBuilder collection, SharpConfig configuration)

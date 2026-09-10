@@ -23,7 +23,7 @@ public class MockNodeController : INodeController
 
         try
         {
-            var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+            string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
             var response = await _kubernetes.CoreV1.CreateNodeAsync(new V1Node
             {
                 Metadata = new V1ObjectMeta
@@ -79,8 +79,6 @@ public class MockNodeController : INodeController
                         new("False", "DiskPressure"),
                         new("False", "NetworkUnavailable"),
                         new("False", "PIDPressure"),
-                        new(localIp, "InternalIP"),
-                        new(node.Name(), "Hostname")
                     },
                     NodeInfo = new V1NodeSystemInfo("amd64", "", "", "", "", "v1.15.2-vk-N/A", "", "linux", "", ""),
                     DaemonEndpoints = new V1NodeDaemonEndpoints(new V1DaemonEndpoint(10250))
@@ -105,7 +103,7 @@ public class MockNodeController : INodeController
 
     public Task<V1NodeStatus> GetNodeStatusAsync(string nodeName, CancellationToken cancellationToken = default)
     {
-        var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
         return Task.FromResult(new V1NodeStatus
         {
             Addresses = new List<V1NodeAddress>
@@ -133,8 +131,6 @@ public class MockNodeController : INodeController
                 new("False", "DiskPressure"),
                 new("False", "NetworkUnavailable"),
                 new("False", "PIDPressure"),
-                new(localIp, "InternalIP"),
-                new(nodeName, "Hostname")
             },
             NodeInfo = new V1NodeSystemInfo("amd64", "", "", "", "", "v1.15.2-vk-N/A", "", "linux", "", ""),
             DaemonEndpoints = new V1NodeDaemonEndpoints(new V1DaemonEndpoint(10250))
