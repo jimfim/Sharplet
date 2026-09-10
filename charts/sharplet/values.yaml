@@ -78,6 +78,13 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
 
+# PodDisruptionBudget: keep at least one sharplet replica available during
+# voluntary disruptions (node drains, upgrades) so the node lease keeps being
+# renewed and the virtual node stays Ready.
+pdb:
+  enabled: true
+  minAvailable: 1
+
 # Additional volumes on the output Deployment definition.
 volumes:
 - name: credentials
