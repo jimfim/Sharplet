@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Sharplet.Provider.Mock</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="KubernetesClient" Version="19.0.2"/>
+        <PackageReference Include="KubernetesClient" />
     </ItemGroup>
 
     <ItemGroup>

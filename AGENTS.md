@@ -16,13 +16,13 @@ Consequences for how you work here:
 
 | Path | What it is |
 | --- | --- |
-| `src/Sharplet.sln` | Solution: Core (library), CSR (tools), Samplekubelet (implementation), plus Provider.Mock |
-| `src/Sharplet.Core` | Class library, net8.0. Public contract: `IPodController`, `INodeController`, `IEventWatcher`. Hosted services (`PodControllerService`, `NodeControllerService`, `EventWatcherService`) watch the API server and report status. `SharpletExtensions.AddKubelet(SharpConfig)` is the DI entry point. Packaged to NuGet (`GeneratePackageOnBuild`). |
+| `src/Sharplet.slnx` | Solution (slnx format): Core (library), CSR (tools), Samplekubelet (implementation), plus Provider.Mock |
+| `src/Sharplet.Core` | Class library, net10.0. Public contract: `IPodController`, `INodeController`, `IEventWatcher`. Hosted services (`PodControllerService`, `NodeControllerService`, `EventWatcherService`) watch the API server and report status. `SharpletExtensions.AddVirtualKubelet(SharpConfig)` is the DI entry point. Packaged to NuGet (`GeneratePackageOnBuild`). |
 | `src/Sharplet.Provider.Mock` | Reference provider implementation (mock). The template 3rd parties should copy. |
-| `src/Sharplet.Samplekubelet` | ASP.NET Core app, net8.0. The deployable kubelet: HTTPS on `10250` (client-cert), `10255` for metrics; entrypoint of the Docker image (`Sharplet.Samplekubelet.dll`). |
+| `src/Sharplet.Samplekubelet` | ASP.NET Core app, net10.0. The deployable kubelet: HTTPS on `10250` (client-cert), `10255` for metrics; entrypoint of the Docker image (`Sharplet.Samplekubelet.dll`). |
 | `src/Sharplet.CSR` | Console helper for the kubelet certificate signing request flow. |
 | `charts/sharplet` | Helm chart that deploys the Samplekubelet image. |
-| `Dockerfile` | Multi-stage .NET 8 build → `aspnet:8.0` runtime. |
+| `Dockerfile` | Multi-stage .NET 10 build → `aspnet:10.0` runtime. |
 | `.github/workflows/main.yaml` | CI: `build` job (runs on push and PRs to `main`/`develop`) and `release` job (push only: GitVersion + NuGet push to GitHub Packages + Docker push + Helm chart-releaser). The `build` check should be required on protected branches so a failing build blocks merges. |
 | `.github/workflows/sonarcloud.yaml` | SonarCloud analysis on every pull request. |
 | `test.yaml` | Sample workload manifest for local cluster testing. |
@@ -30,9 +30,10 @@ Consequences for how you work here:
 
 ## Toolchain & common commands
 
-- .NET 8 SDK (CI uses `8.x`).
+- .NET 10 SDK (CI uses `10.x`).
+- Package versions are managed centrally in `src/Directory.Packages.props` (Central Package Management) — `<PackageReference>` items in project files must **not** specify a `Version` attribute.
 - Build: `dotnet build src` (CI runs `dotnet build src -c Release -p:version=<GitVersion semver>`).
-- There are **no test projects yet**. If you add tests, create a new xUnit project under `src/` named `Sharplet.<Component>.Tests`, add it to `src/Sharplet.sln`, and make sure `dotnet build src` still passes in CI.
+- There are **no test projects yet**. If you add tests, create a new xUnit project under `src/` named `Sharplet.<Component>.Tests`, add it to `src/Sharplet.slnx`, and make sure `dotnet build src` still passes in CI.
 - Docker image (from repo root): `docker build -t sharplet .`
 - Deploy to a cluster: `helm install sharplet ./charts/sharplet`, then `kubectl apply -f test.yaml` to schedule a sample pod on the virtual node.
 
@@ -94,7 +95,7 @@ Logging:
 - **Registration**: new services, watchers, controllers, and config are registered in `SharpletExtensions.AddKubelet(...)`. Use constructor injection everywhere; no statics, no service-locator patterns.
 - **Provider boundary**: `Sharplet.Core` must stay provider-agnostic. Provider-specific logic lives in separate `Sharplet.Provider.*` projects that implement the Core interfaces — follow the `Sharplet.Provider.Mock` project as the reference layout.
 - **Long-running work** lives in `BackgroundService` hosted services; all Kubernetes API calls go through the injected `IKubernetes` (from the `KubernetesClient` package, `k8s` / `k8s.Models` namespaces) and pass through the ambient `CancellationToken`.
-- **Package upgrades**: `KubernetesClient` and other package versions are managed by Dependabot. Don't hand-bump package versions; review the Dependabot PRs instead.
+- **Package upgrades**: `KubernetesClient` and other package versions (centralized in `src/Directory.Packages.props`) are managed by Dependabot. Don't hand-bump package versions; review the Dependabot PRs instead.
 
 ## CI, releases & the Helm chart
 

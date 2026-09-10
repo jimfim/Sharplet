@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/implementation/" Id="db12faa1-9369-4926-95e8-98319bdadf54">
+    <Project Path="Sharplet.Samplekubelet/Sharplet.Samplekubelet.csproj" Name="Sharplet.Samplekubelet" Id="8fb53937-2f3f-4a4e-ac2d-4165c350acec" />
+  </Folder>
+  <Folder Name="/library/" Id="6a412389-f761-43a1-afea-0ed4658669e7">
+    <Project Path="Sharplet.Core/Sharplet.Core.csproj" Name="Sharplet.Core" Id="ba4af96f-0937-4bd0-9de1-d226f451c8e0" />
+    <Project Path="Sharplet.Provider.Mock/Sharplet.Provider.Mock.csproj" Name="Sharplet.Provider.Mock" Id="435873e6-11f0-427b-b081-8bdd29d772c7" />
+  </Folder>
+  <Folder Name="/tools/" Id="bae17c42-8f83-4b3a-af3f-74d2924277b1">
+    <Project Path="Sharplet.CSR/Sharplet.CSR.csproj" Name="Sharplet.CSR" Id="3dc13766-ba2e-4992-9668-f542b5820029" />
+  </Folder>
+</Solution>

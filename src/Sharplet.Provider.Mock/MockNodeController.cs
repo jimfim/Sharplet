@@ -49,16 +49,16 @@ public class MockNodeController : INodeController
                     PodCIDR = "10.244.0.0/24",
                     Taints = new List<V1Taint>
                     {
-                        new("NoSchedule", "kubernetes.io/sharplet"),
-                        new("NoExecute", "kubernetes.io/sharplet")
+                        new V1Taint { Effect = "NoSchedule", Value = "kubernetes.io/sharplet" },
+                        new V1Taint { Effect = "NoExecute", Value = "kubernetes.io/sharplet" }
                     }
                 },
                 Status = new V1NodeStatus
                 {
                     Addresses = new List<V1NodeAddress>
                     {
-                        new(localIp, "InternalIP"),
-                        new(node.Name(), "Hostname")
+                        new V1NodeAddress { Address = localIp, Type = "InternalIP" },
+                        new V1NodeAddress { Address = node.Name(), Type = "Hostname" }
                     },
                     Allocatable = new Dictionary<string, ResourceQuantity>
                     {
@@ -74,17 +74,23 @@ public class MockNodeController : INodeController
                     },
                     Conditions = new List<V1NodeCondition>
                     {
-                        new("True", "Ready"),
-                        new("False", "OutOfDisk"),
-                        new("False", "MemoryPressure"),
-                        new("False", "DiskPressure"),
-                        new("False", "NetworkUnavailable"),
-                        new("False", "PIDPressure"),
-                        new(localIp, "InternalIP"),
-                        new(node.Name(), "Hostname")
+                        new V1NodeCondition { Status = "True", Type = "Ready" },
+                        new V1NodeCondition { Status = "False", Type = "OutOfDisk" },
+                        new V1NodeCondition { Status = "False", Type = "MemoryPressure" },
+                        new V1NodeCondition { Status = "False", Type = "DiskPressure" },
+                        new V1NodeCondition { Status = "False", Type = "NetworkUnavailable" },
+                        new V1NodeCondition { Status = "False", Type = "PIDPressure" }
                     },
-                    NodeInfo = new V1NodeSystemInfo("amd64", "", "", "", "", "v1.15.2-vk-N/A", "", "linux", "", ""),
-                    DaemonEndpoints = new V1NodeDaemonEndpoints(new V1DaemonEndpoint(10250))
+                    NodeInfo = new V1NodeSystemInfo
+                    {
+                        Architecture = "amd64",
+                        KubeletVersion = "v1.15.2-vk-N/A",
+                        OperatingSystem = "linux"
+                    },
+                    DaemonEndpoints = new V1NodeDaemonEndpoints
+                    {
+                        KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 }
+                    }
                 }
             }, cancellationToken: cancellationToken);
         }
@@ -111,8 +117,8 @@ public class MockNodeController : INodeController
         {
             Addresses = new List<V1NodeAddress>
             {
-                new(localIp, "InternalIP"),
-                new(nodeName, "Hostname")
+                new V1NodeAddress { Address = localIp, Type = "InternalIP" },
+                new V1NodeAddress { Address = nodeName, Type = "Hostname" }
             },
             Allocatable = new Dictionary<string, ResourceQuantity>
             {
@@ -128,17 +134,23 @@ public class MockNodeController : INodeController
             },
             Conditions = new List<V1NodeCondition>
             {
-                new("True", "Ready"),
-                new("False", "OutOfDisk"),
-                new("False", "MemoryPressure"),
-                new("False", "DiskPressure"),
-                new("False", "NetworkUnavailable"),
-                new("False", "PIDPressure"),
-                new(localIp, "InternalIP"),
-                new(nodeName, "Hostname")
+                new V1NodeCondition { Status = "True", Type = "Ready" },
+                new V1NodeCondition { Status = "False", Type = "OutOfDisk" },
+                new V1NodeCondition { Status = "False", Type = "MemoryPressure" },
+                new V1NodeCondition { Status = "False", Type = "DiskPressure" },
+                new V1NodeCondition { Status = "False", Type = "NetworkUnavailable" },
+                new V1NodeCondition { Status = "False", Type = "PIDPressure" }
             },
-            NodeInfo = new V1NodeSystemInfo("amd64", "", "", "", "", "v1.15.2-vk-N/A", "", "linux", "", ""),
-            DaemonEndpoints = new V1NodeDaemonEndpoints(new V1DaemonEndpoint(10250))
+            NodeInfo = new V1NodeSystemInfo
+            {
+                Architecture = "amd64",
+                KubeletVersion = "v1.15.2-vk-N/A",
+                OperatingSystem = "linux"
+            },
+            DaemonEndpoints = new V1NodeDaemonEndpoints
+            {
+                KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 }
+            }
         });
     }
 }
