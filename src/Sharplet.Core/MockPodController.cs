@@ -65,8 +65,8 @@ public class MockPodController : IPodController
                 State = new V1ContainerState(new V1ContainerStateRunning(DateTime.Now))
             })
             .ToList();
-        var localIp = Environment.GetEnvironmentVariable("POD_IP");
-        Console.WriteLine($"setting pod ip to: {localIp}");
+        string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        _logger.LogDebug("setting pod ip to {PodIp}", localIp);
         var status = new V1PodStatus
         {
             Phase = "Running",
