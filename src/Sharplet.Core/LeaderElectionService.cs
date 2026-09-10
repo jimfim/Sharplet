@@ -78,6 +78,7 @@ public class LeaderElectionService : BackgroundService
 
         _elector = elector;
         await EnsureLeaseNamespaceAsync(stoppingToken);
+        await EnsureLeaseRecordCompleteAsync(stoppingToken);
         await elector.RunAndTryToHoldLeadershipForeverAsync(stoppingToken);
     }
 
@@ -99,6 +100,42 @@ public class LeaderElectionService : BackgroundService
         catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Conflict)
         {
             // namespace already exists; nothing to do
+        }
+    }
+
+    private async Task EnsureLeaseRecordCompleteAsync(CancellationToken cancellationToken)
+    {
+        V1Lease lease;
+        try
+        {
+            lease = await _kubernetes.CoordinationV1.ReadNamespacedLeaseAsync(_config.NodeName, LeaseNamespace, cancellationToken: cancellationToken);
+        }
+        catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return; // no lease yet; the elector creates it
+        }
+
+        if (lease.Spec.AcquireTime is not null)
+        {
+            return; // record is complete; nothing to fix
+        }
+
+        // Legacy leases (e.g. created by a pre-leader-election sharplet) may lack
+        // acquireTime. The elector treats such a record as incomplete and only knows how
+        // to create it, so it would never take over. Fill in the missing fields so the
+        // standard expiry-based takeover works.
+        DateTime now = DateTime.UtcNow;
+        lease.Spec.AcquireTime = now;
+        lease.Spec.RenewTime ??= now;
+        lease.Spec.HolderIdentity ??= _config.NodeName;
+        try
+        {
+            await _kubernetes.CoordinationV1.ReplaceNamespacedLeaseAsync(lease, _config.NodeName, LeaseNamespace, cancellationToken: cancellationToken);
+            _logger.LogInformation("completed lease record for {LeaseName} in {Namespace}", _config.NodeName, LeaseNamespace);
+        }
+        catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Conflict)
+        {
+            // a replica raced us; the record is complete now anyway
         }
     }
 }

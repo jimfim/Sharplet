@@ -98,7 +98,11 @@ public static class SharpletExtensions
         collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(config));
         collection.Services.AddSingleton<IPodController, MockPodController>();
         collection.Services.AddSingleton<INodeController, MockNodeController>();
-        collection.Services.AddHostedService<LeaderElectionService>();
+        // Registered explicitly (not via AddHostedService<T>) because the web host builder
+        // only records the IHostedService alias: the concrete type must be resolvable so the
+        // status services can read leadership state from the very instance that runs it.
+        collection.Services.AddSingleton<LeaderElectionService>();
+        collection.Services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<LeaderElectionService>());
         collection.Services.AddHostedService<NodeControllerService>();
         collection.Services.AddHostedService<EventWatcherService>();
         collection.Services.AddHostedService<PodControllerService>();
