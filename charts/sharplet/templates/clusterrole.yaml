@@ -59,6 +59,13 @@ rules:
   - create
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - create
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases

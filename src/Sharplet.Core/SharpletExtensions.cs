@@ -83,6 +83,7 @@ public static class SharpletExtensions
         collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(config));
         collection.Services.AddSingleton<IPodController, MockPodController>();
         collection.Services.AddSingleton<INodeController, MockNodeController>();
+        collection.Services.AddHostedService<LeaderElectionService>();
         collection.Services.AddHostedService<NodeControllerService>();
         collection.Services.AddHostedService<EventWatcherService>();
         collection.Services.AddHostedService<PodControllerService>();
