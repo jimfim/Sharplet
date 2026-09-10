@@ -63,7 +63,7 @@ public class MockPodController : IPodController
                 Ready = true,
                 RestartCount = 1,
                 Started = true,
-                State = new V1ContainerState(new V1ContainerStateRunning(DateTime.Now))
+                State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = DateTime.Now } }
             })
             .ToList();
         var localIp = Environment.GetEnvironmentVariable("POD_IP");
@@ -75,12 +75,12 @@ public class MockPodController : IPodController
             HostIP = localIp,
             HostIPs = new List<V1HostIP>
             {
-                new(localIp)
+                new V1HostIP { Ip = localIp }
             },
             PodIP = localIp,
             PodIPs = new List<V1PodIP>
             {
-                new(localIp)
+                new V1PodIP { Ip = localIp }
             },
             Conditions = new List<V1PodCondition>
             {
