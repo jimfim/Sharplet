@@ -50,3 +50,14 @@ jobs:
           .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
           dotnet build src
           .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+      # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
+      # quality gate; this step polls the gate status from the scan report and
+      # fails the workflow when the gate is red
+      - name: SonarCloud quality gate check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 600
+          scanMetadataReportFile: .\.sonarqube\out\.sonar\report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
