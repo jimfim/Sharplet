@@ -27,7 +27,7 @@ internal class EventWatcher : IEventWatcher
 
     public Task WatchEventStream()
     {
-        Task.Run(() => _kubernetes.CoreV1.WatchListNamespacedPod("default",
+        Task.Run(() => _kubernetes.CoreV1.WatchListPodForAllNamespaces(
             onEvent: (type, item) => _ = HandlePodEventAsync(type, item),
             onError: e => _logger.LogError(e, "pod watch error: {Message}", e.Message)));
         _logger.LogInformation("WatchEventStream Stopped");
