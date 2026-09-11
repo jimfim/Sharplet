@@ -32,9 +32,11 @@ jobs:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
     # Build; -warnaserror on NU1902..NU1904 fails the build when a direct or
-    # transitive package has a known moderate+ severity vulnerability
+    # transitive package has a known moderate+ severity vulnerability;
+    # LockedMode=error fails the build when the committed packages.lock.json files
+    # do not match the resolved package versions
     - name: Build and Test
-      run: dotnet build src -c Release -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
+      run: dotnet build src -c Release -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
 
   # Only runs on pushes to main/develop (never on pull requests), so a failed
   # publish can neither block a merge nor leak artifacts from a PR.
@@ -81,10 +83,10 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
-    # Build; same vulnerability gate as the build job so a vulnerable package
-    # can never be published
+    # Build; same vulnerability and lock-file gates as the build job so a
+    # vulnerable or drifted package can never be published
     - name: Build and Test
-      run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
+      run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
 
     #release
 
