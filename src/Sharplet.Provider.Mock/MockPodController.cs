@@ -32,10 +32,12 @@ public class MockPodController : IPodController
         
     }
 
-    public async Task DeletePodAsync(V1Pod pod, CancellationToken cancellationToken = default)
+    public Task DeletePodAsync(V1Pod pod, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("DeletePodAsync");
-        await _kubernetes.CoreV1.DeleteNamespacedPodAsync(pod.Name(), pod.Namespace(), cancellationToken: cancellationToken);
+        // the pod object was already deleted by the user/controller; a provider only releases its local
+        // state. Deleting the API object here would 404 and crash the kubelet.
+        _logger.LogInformation("DeletePodAsync {PodName}", pod.Name());
+        return Task.CompletedTask;
     }
 
     public async Task<V1Pod?> GetPodAsync(string @namespace, string name, CancellationToken cancellationToken = default)
