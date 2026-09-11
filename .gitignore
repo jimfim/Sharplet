@@ -133,3 +133,6 @@ $RECYCLE.BIN/
 _NCrunch*
 .idea
 values.local.yaml
+
+# Local git worktrees (in-flight feature/agent work)
+.worktrees/
