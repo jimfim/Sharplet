@@ -10,9 +10,11 @@ RUN dotnet restore src
 # Publish only the host project so the runtime image does not ship the
 # CSR tool or the other solution binaries
 RUN dotnet publish src/Sharplet.Samplekubelet -c Release -o out
-
-# Build runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+# Runtime image: Ubuntu Chiseled (no shell, no package manager, no OS CA store).
+# Consequences: kubectl exec into the pod is not possible (use port-forward or a
+# debug container), and TLS to the API server must use the in-cluster CA file,
+# not system trust. The app runs as the image's non-root 'app' user.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled
 WORKDIR /App
 COPY --from=build-env /App/out .
 ENTRYPOINT ["dotnet", "Sharplet.Samplekubelet.dll"]
