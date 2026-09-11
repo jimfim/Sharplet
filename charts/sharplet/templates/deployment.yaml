@@ -5,9 +5,8 @@ metadata:
   labels:
     {{- include "sharplet.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  # a virtual node agent must run exactly one replica per node; there is no HPA
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "sharplet.selectorLabels" . | nindent 6 }}
