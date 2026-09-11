@@ -12,18 +12,24 @@ namespace Sharplet.Core;
 public static class SharpletExtensions
 {
     /// <summary>
-    /// Registers the virtual kubelet services (kubernetes client, controllers, hosted services)
-    /// and the Kestrel listeners (10255 http, 10250 https with client certs) on the builder.
-    /// Call <see cref="MapKubeletEndpoints(WebApplication)"/> on the application after
+    /// Registers the virtual kubelet services (kubernetes client, leader election, hosted status
+    /// services) and the Kestrel listeners (10255 http, 10250 https with client certs) on the
+    /// builder. Call <see cref="MapKubeletEndpoints(WebApplication)"/> on the application after
     /// <c>Build()</c> to expose the kubelet API endpoints.
     /// </summary>
     /// <param name="builder"></param>
     /// <param name="config"></param>
+    /// <param name="configureProvider">
+    /// Optional callback that registers the pod/node provider. Implement <see cref="IPodController"/>
+    /// and <see cref="INodeController"/> (plus any supporting services) and add them here. When omitted,
+    /// the mock provider is registered for any of those services that is not otherwise registered.
+    /// </param>
     /// <returns></returns>
-    public static WebApplicationBuilder AddVirtualKubelet(this WebApplicationBuilder builder, SharpConfig config)
+    public static WebApplicationBuilder AddVirtualKubelet(this WebApplicationBuilder builder, SharpConfig config,
+        Action<IServiceCollection>? configureProvider = null)
     {
         builder.ConfigureKubeletListeners();
-        builder.AddVirtualKubeletServices(config);
+        builder.AddVirtualKubeletServices(config, configureProvider);
         return builder;
     }
 
@@ -104,14 +110,28 @@ public static class SharpletExtensions
         return builder;
     }
     
-    private static WebApplicationBuilder AddVirtualKubeletServices(this WebApplicationBuilder collection, SharpConfig configuration)
+    private static WebApplicationBuilder AddVirtualKubeletServices(this WebApplicationBuilder collection,
+        SharpConfig configuration, Action<IServiceCollection>? configureProvider)
     {
-        var config = KubernetesClientConfiguration.IsInCluster()
+        KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
             ? KubernetesClientConfiguration.InClusterConfig()
             : KubernetesClientConfiguration.BuildConfigFromConfigFile();
-        collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(config));
-        collection.Services.AddSingleton<IPodController, MockPodController>();
-        collection.Services.AddSingleton<INodeController, MockNodeController>();
+        collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(kubernetesConfig));
+        // Consumer registration point: pass a callback to register a custom provider (implement
+        // IPodController / INodeController plus any supporting services). The mock provider below
+        // only fills in services that are still unregistered, so a consumer-provided provider is
+        // never clobbered by last-registration-wins.
+        configureProvider?.Invoke(collection.Services);
+        if (collection.Services.Any(descriptor => descriptor.ServiceType == typeof(IPodController)) is false)
+        {
+            collection.Services.AddSingleton<IPodController, MockPodController>();
+        }
+
+        if (collection.Services.Any(descriptor => descriptor.ServiceType == typeof(INodeController)) is false)
+        {
+            collection.Services.AddSingleton<INodeController, MockNodeController>();
+        }
+
         // Registered explicitly (not via AddHostedService<T>) because the web host builder
         // only records the IHostedService alias: the concrete type must be resolvable so the
         // status services can read leadership state from the very instance that runs it.
