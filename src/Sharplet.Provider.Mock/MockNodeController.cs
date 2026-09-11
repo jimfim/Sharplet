@@ -24,8 +24,9 @@ public class MockNodeController : INodeController
 
         try
         {
-            var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
-            var response = await _kubernetes.CoreV1.CreateNodeAsync(new V1Node
+            string localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+            DateTime now = DateTime.UtcNow;
+            await _kubernetes.CoreV1.CreateNodeAsync(new V1Node
             {
                 Metadata = new V1ObjectMeta
                 {
@@ -74,12 +75,12 @@ public class MockNodeController : INodeController
                     },
                     Conditions = new List<V1NodeCondition>
                     {
-                        new V1NodeCondition { Status = "True", Type = "Ready" },
-                        new V1NodeCondition { Status = "False", Type = "OutOfDisk" },
-                        new V1NodeCondition { Status = "False", Type = "MemoryPressure" },
-                        new V1NodeCondition { Status = "False", Type = "DiskPressure" },
-                        new V1NodeCondition { Status = "False", Type = "NetworkUnavailable" },
-                        new V1NodeCondition { Status = "False", Type = "PIDPressure" }
+                        new V1NodeCondition { Status = "True", Type = "Ready", LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = "False", Type = "OutOfDisk", LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = "False", Type = "MemoryPressure", LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = "False", Type = "DiskPressure", LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = "False", Type = "NetworkUnavailable", LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = "False", Type = "PIDPressure", LastHeartbeatTime = now, LastTransitionTime = now }
                     },
                     NodeInfo = new V1NodeSystemInfo
                     {
@@ -114,7 +115,8 @@ public class MockNodeController : INodeController
 
     public Task<V1NodeStatus> GetNodeStatusAsync(string nodeName, CancellationToken cancellationToken = default)
     {
-        var localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        string localIp = Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        DateTime now = DateTime.UtcNow;
         return Task.FromResult(new V1NodeStatus
         {
             Addresses = new List<V1NodeAddress>
@@ -136,12 +138,12 @@ public class MockNodeController : INodeController
             },
             Conditions = new List<V1NodeCondition>
             {
-                new V1NodeCondition { Status = "True", Type = "Ready" },
-                new V1NodeCondition { Status = "False", Type = "OutOfDisk" },
-                new V1NodeCondition { Status = "False", Type = "MemoryPressure" },
-                new V1NodeCondition { Status = "False", Type = "DiskPressure" },
-                new V1NodeCondition { Status = "False", Type = "NetworkUnavailable" },
-                new V1NodeCondition { Status = "False", Type = "PIDPressure" }
+                new V1NodeCondition { Status = "True", Type = "Ready", LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = "False", Type = "OutOfDisk", LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = "False", Type = "MemoryPressure", LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = "False", Type = "DiskPressure", LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = "False", Type = "NetworkUnavailable", LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = "False", Type = "PIDPressure", LastHeartbeatTime = now, LastTransitionTime = now }
             },
             NodeInfo = new V1NodeSystemInfo
             {

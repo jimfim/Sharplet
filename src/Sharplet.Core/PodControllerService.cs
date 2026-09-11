@@ -1,4 +1,4 @@
-using k8s;
+﻿using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Microsoft.Extensions.Hosting;
@@ -13,15 +13,17 @@ public class PodControllerService : BackgroundService
     private readonly ILogger<PodControllerService> _logger;
     private readonly IPodController _podController;
     private readonly string _podNamespace;
+    private readonly LeaderElectionService _leaderElection;
 
     public PodControllerService(SharpConfig config, IPodController podController,
-        ILogger<PodControllerService> logger, IKubernetes kubernetes)
+        ILogger<PodControllerService> logger, IKubernetes kubernetes, LeaderElectionService leaderElection)
     {
         _config = config;
         _podController = podController;
         _logger = logger;
         _kubernetes = kubernetes;
         _podNamespace = Environment.GetEnvironmentVariable("POD_NAMESPACE") ?? "default";
+        _leaderElection = leaderElection;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,6 +33,12 @@ public class PodControllerService : BackgroundService
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            // Only the leader patches pod status; followers wait for a takeover.
+            if (_leaderElection.IsLeader is false)
+            {
+                continue;
+            }
+
             // Only patch pods scheduled onto this node: the scheduler sets spec.nodeName,
             // so a field selector keeps pods on real nodes out of the patch loop.
             HttpOperationResponse<V1PodList> apiPods =

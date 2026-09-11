@@ -78,6 +78,13 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
 
+# PodDisruptionBudget: keep at least one sharplet replica available during
+# voluntary disruptions (node drains, upgrades) so the node lease keeps being
+# renewed and the virtual node stays Ready.
+pdb:
+  enabled: true
+  minAvailable: 1
+
 # Additional volumes on the output Deployment definition.
 volumes:
 - name: credentials
@@ -93,6 +100,9 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+# Prefer spreading replicas across nodes (see the deployment template); supply
+# .Values.affinity to override.
+podAntiAffinity: true
 
 env:
 - name: ASPNETCORE_URLS
@@ -105,6 +115,14 @@ env:
   valueFrom:
     fieldRef:
       fieldPath: status.podIP
+- name: POD_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.name
+- name: POD_NAMESPACE
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
 
 # base64 encoded certs
 #apiserverKey: 
