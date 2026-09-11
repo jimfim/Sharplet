@@ -12,6 +12,26 @@ string GenerateCertificate(string name, string keyFile)
     SubjectAlternativeNameBuilder sanBuilder = new();
     sanBuilder.AddIpAddress(IPAddress.Loopback);
 
+    // the API server dials the kubelet by pod IP (the node's InternalIP); it may also resolve the node name,
+    // so both must be in the SAN or TLS validation on the server side fails
+    string? podIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP");
+    if (podIp is not null)
+    {
+        if (IPAddress.TryParse(podIp, out IPAddress? podIpAddress))
+        {
+            sanBuilder.AddIpAddress(podIpAddress);
+        }
+        else
+        {
+            Console.Error.WriteLine($"{podIp} (VKUBELET_POD_IP/POD_IP) is not a valid IP address; it will not be added to the certificate SAN");
+        }
+    }
+    sanBuilder.AddDnsName(name);
+    if (IPAddress.TryParse(name, out IPAddress? nameIpAddress))
+    {
+        sanBuilder.AddIpAddress(nameIpAddress);
+    }
+
     X500DistinguishedName distinguishedName = new($"CN=system:node:{name},O=system:nodes");
 
     using RSA rsa = RSA.Create(4096);
@@ -68,7 +88,7 @@ string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ??
 
 KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
 IKubernetes client = new Kubernetes(config);
-string name = "demo";
+string name = Environment.GetEnvironmentVariable("SHARPLET_NODE_NAME") ?? "sharplet";
 string x509 = GenerateCertificate(name, keyFile);
 byte[] encodedCsr = Encoding.UTF8.GetBytes(x509);
 try
@@ -106,6 +126,9 @@ JsonSerializerOptions serializeOptions = new()
 V1CertificateSigningRequest readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
 JsonDocument old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
 
+// DEV SHORTCUT: the tool approves its own CSR by patching status.conditions, which only works with
+// cluster-admin. In production, a human or an approval policy approves the 'kubernetes.io/kubelet-serving'
+// CSR instead; keep this path for throwaway clusters (minikube) only.
 List<V1CertificateSigningRequestCondition> replace = new()
 {
     new V1CertificateSigningRequestCondition

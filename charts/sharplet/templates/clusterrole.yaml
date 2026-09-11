@@ -2,33 +2,33 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "dotnet-kubelet.serviceAccountName" . }}
+  name: {{ include "sharplet.serviceAccountName" . }}
   labels:
-    {{- include "dotnet-kubelet.labels" . | nindent 4 }}
+    {{- include "sharplet.labels" . | nindent 4 }}
   {{- with .Values.serviceAccount.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - secrets
-  - services
-  verbs:
-  - get
-  - list
-  - watch
+# the code only talks to these APIs:
+#   pods (get/list/watch/patch), pods/status (patch/update), nodes (create/get),
+#   nodes/status (patch), events (create), namespaces (get/create: the lease namespace
+#   is created on demand), leases (get/create/update: leader election over the node lease)
 - apiGroups:
   - ""
   resources:
   - pods
   verbs:
-  - delete
   - get
   - list
   - watch
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  verbs:
+  - update
   - patch
 - apiGroups:
   - ""
@@ -42,14 +42,6 @@ rules:
   resources:
   - nodes/status
   verbs:
-  - update
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - pods/status
-  verbs:
-  - update
   - patch
 - apiGroups:
   - ""
@@ -57,7 +49,6 @@ rules:
   - events
   verbs:
   - create
-  - patch
 - apiGroups:
   - ""
   resources:
@@ -69,14 +60,6 @@ rules:
   - coordination.k8s.io
   resources:
   - leases
-  verbs:
-  - get
-  - create
-  - update
-- apiGroups:
-  - authorization.k8s.io
-  resources:
-  - subjectaccessreviews
   verbs:
   - get
   - create

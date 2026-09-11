@@ -6,6 +6,12 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Description>C# reference implementation of a Kubernetes virtual node (virtual kubelet); consumers implement the documented IPodController / INodeController / IEventWatcher interfaces to provide their own provider.</Description>
+        <Authors>jimjim</Authors>
+        <ProjectUrl>https://github.com/jimjim/Sharplet</ProjectUrl>
+        <RepositoryUrl>https://github.com/jimjim/Sharplet</RepositoryUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>Readme.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -16,4 +22,7 @@
         <PackageReference Include="KubernetesClient" />
     </ItemGroup>
 
+    <ItemGroup>
+        <None Include="..\..\Readme.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 </Project>
