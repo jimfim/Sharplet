@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "dotnet-kubelet.fullname" . }}
+  name: {{ include "sharplet.fullname" . }}
   labels:
-    {{- include "dotnet-kubelet.labels" . | nindent 4 }}
+    {{- include "sharplet.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "dotnet-kubelet.selectorLabels" . | nindent 6 }}
+      {{- include "sharplet.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "dotnet-kubelet.labels" . | nindent 8 }}
+        {{- include "sharplet.labels" . | nindent 8 }}
 	{{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -27,7 +27,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "dotnet-kubelet.serviceAccountName" . }}
+      serviceAccountName: {{ include "sharplet.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -38,7 +38,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # command: [ "/bin/bash", "-c", "--" ]
           # args: [ "while true; do sleep 30; done;" ]
-          #command: [ "dotnet", "dotnet-kubelet.dll" ]
+          #command: [ "dotnet", "sharplet.dll" ]
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -88,7 +88,7 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    {{- include "dotnet-kubelet.selectorLabels" . | nindent 20 }}
+                    {{- include "sharplet.selectorLabels" . | nindent 20 }}
                 topologyKey: kubernetes.io/hostname
       {{- end }}
       {{- with .Values.tolerations }}
