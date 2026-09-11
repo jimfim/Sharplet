@@ -76,8 +76,22 @@ public static class SharpletExtensions
             options.ListenAnyIP(10255);
             options.ListenAnyIP(10250, listenOptions =>
             {
-                string cert = File.ReadAllText(Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? "/etc/sharplet/cert.pem");
-                string key = File.ReadAllText(Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? "/etc/sharplet/key.pem");
+                string certPath = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? "/etc/sharplet/cert.pem";
+                string keyPath = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? "/etc/sharplet/key.pem";
+                if (File.Exists(certPath) is false || File.Exists(keyPath) is false)
+                {
+                    // Local-debug fallback: the CSR tool writes to ~/.sharplet when /etc/sharplet is not writable.
+                    string homeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sharplet");
+                    string homeCert = Path.Combine(homeDir, "cert.pem");
+                    string homeKey = Path.Combine(homeDir, "key.pem");
+                    if (File.Exists(homeCert) && File.Exists(homeKey))
+                    {
+                        certPath = homeCert;
+                        keyPath = homeKey;
+                    }
+                }
+                string cert = File.ReadAllText(certPath);
+                string key = File.ReadAllText(keyPath);
                 X509Certificate2 x509 = X509Certificate2.CreateFromPem(cert, key);
                 listenOptions.UseHttps(adapterOptions =>
                 {
