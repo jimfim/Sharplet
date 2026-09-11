@@ -171,6 +171,7 @@ kubectl get secret sharplet -o jsonpath='{.data.key\.pem}'  | base64 -d > certs/
 | Symptom | Likely cause / fix |
 |---|---|
 | `sharplet` pod in `ImagePullBackOff` | Image not loaded into minikube: `minikube image load localhost/sharplet`, then `kubectl rollout restart deployment/sharplet`. |
+| `kubectl exec` into the `sharplet` pod fails (no shell) | The runtime image is Ubuntu Chiseled (distroless: no shell, no package manager, no OS CA store). Use `kubectl port-forward` on the `10255` port (see step 6) or an ephemeral debug container (`kubectl debug`) instead of `exec`. |
 | `sharplet` pod `CrashLoopBackOff` with `FileNotFoundException: /etc/sharplet/cert.pem` | Stale image that predates `APISERVER_CERT_LOCATION` support — rebuild the image, or mount the secret where the old code looks: `helm upgrade sharplet ./charts/sharplet --set 'volumeMounts[0].mountPath=/etc/sharplet'`. |
 | Node `sharplet` never appears, or stays `NotReady` | `kubectl logs -l app.kubernetes.io/name=sharplet` — usually RBAC or a missing in-cluster config. `kubectl get events` helps too. |
 | Sample pod stuck `Pending` | It must carry the `kubernetes.io/sharplet` toleration (it's in `test.yaml`); confirm the `sharplet` node is `Ready` and the kubelet status tracker is running (logs). |
