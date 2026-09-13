@@ -36,24 +36,28 @@ public static class SharpletExtensions
     /// <summary>
     /// Maps the kubelet API endpoints (<c>/containerLogs/{namespace}/{pod}/{container}</c>) and the
     /// health probes (<c>/livez</c>, <c>/readyz</c>, <c>/healthz</c>) onto the application. The probes
-    /// are designed for the read-only 10255 port: they require no client certificate.
+    /// are designed for the read-only 10255 port: they require no client certificate. The log
+    /// endpoint streams the lines produced by the registered <see cref="IPodController"/> (mock
+    /// provider by default); the API server proxies <c>kubectl logs</c>/k9s requests for pods on
+    /// the virtual node to it.
     /// </summary>
-    /// <param name="app"></param>
-    /// <returns></returns>
     public static WebApplication MapKubeletEndpoints(this WebApplication app)
     {
         app.MapGet("/containerLogs/{podNamespace}/{podID}/{containerName}",
-            async (HttpContext context, string podNamespace, string podID, string containerName) =>
+            async (HttpContext context, IPodController podController,
+                string podNamespace, string podID, string containerName,
+                CancellationToken cancellationToken) =>
             {
-                Random random = new();
-                context.Response.Headers.Append("Content-Type", "text/plain");
-                context.Response.Headers.Append("Transfer-Encoding", "chunked");
-                for (int i = 0; i < 10; i++)
+                // Per-line flush keeps kubectl logs -f / k9s streaming live; Kestrel frames the
+                // open-ended body as chunked. cancellationToken is the client disconnect: closing
+                // k9s or Ctrl-C'ing kubectl stops the provider's enumeration.
+                context.Response.ContentType = "text/plain";
+                IAsyncEnumerable<string> lines = await podController.GetContainerLogs(
+                    podNamespace, podID, containerName, cancellationToken);
+                await foreach (string line in lines)
                 {
-                    string logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} - {podNamespace} {podID} {containerName} Log message {i}\n";
-                    await context.Response.WriteAsync(logMessage);
+                    await context.Response.WriteAsync($"{line}\n");
                     await context.Response.Body.FlushAsync();
-                    await Task.Delay(random.Next(1000, 3000)); // Simulate delays between log messages
                 }
 
                 await context.Response.CompleteAsync();
