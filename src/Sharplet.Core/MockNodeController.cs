@@ -10,7 +10,7 @@ public class MockNodeController : INodeController
 {
     private readonly ILogger<MockNodeController> _logger;
     private readonly IKubernetes _kubernetes;
-
+    private bool _loopbackWarned;
     public MockNodeController(ILogger<MockNodeController> logger, IKubernetes kubernetes)
     {
         _logger = logger;
@@ -23,7 +23,7 @@ public class MockNodeController : INodeController
 
         try
         {
-            string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+            string localIp = GetKubeletIp(node.Name());
             DateTime now = DateTime.UtcNow;
             await _kubernetes.CoreV1.CreateNodeAsync(new V1Node
             {
@@ -111,7 +111,7 @@ public class MockNodeController : INodeController
 
     public Task<V1NodeStatus> GetNodeStatusAsync(string nodeName, CancellationToken cancellationToken = default)
     {
-        string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        string localIp = GetKubeletIp(nodeName);
         DateTime now = DateTime.UtcNow;
         return Task.FromResult(new V1NodeStatus
         {
@@ -149,5 +149,41 @@ public class MockNodeController : INodeController
             },
             DaemonEndpoints = new V1NodeDaemonEndpoints { KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 } }
         });
+    }
+
+    // The node's InternalIP is what the API server dials when proxying to the kubelet (pod logs,
+    // exec). Outside a pod there is no VKUBELET_POD_IP, and the loopback fallback is unreachable
+    // from the cluster: the API server proxies to its own loopback instead (on minikube, the VM's
+    // real kubelet), so kubectl logs/k9s come back empty. Point VKUBELET_POD_IP at the IP the
+    // cluster uses to reach this machine to enable the proxy. Blank values count as unset: IDE
+    // run configurations commonly define the variable with an empty value.
+    private string GetKubeletIp(string nodeName)
+    {
+        string localIp = FirstNonBlank(
+                Environment.GetEnvironmentVariable("VKUBELET_POD_IP"),
+                Environment.GetEnvironmentVariable("POD_IP"))
+            ?? "127.0.0.1";
+        if (localIp is "127.0.0.1" && _loopbackWarned is false)
+        {
+            _loopbackWarned = true;
+            _logger.LogWarning(
+                "node {NodeName} advertises the loopback address as its InternalIP: the API server cannot proxy requests (pod logs, exec) to this kubelet. " +
+                "set VKUBELET_POD_IP to the IP the cluster uses to reach this machine",
+                nodeName);
+        }
+        return localIp;
+    }
+
+    private static string? FirstNonBlank(params string?[] values)
+    {
+        foreach (string? value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value) is false)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

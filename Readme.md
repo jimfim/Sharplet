@@ -159,12 +159,23 @@ export APISERVER_KEY_LOCATION="$PWD/certs/key.pem"
 dotnet run --project src/Sharplet.Samplekubelet
 ```
 
-Outside a pod there's no `VKUBELET_POD_IP`, so the node reports `127.0.0.1` as its address — fine for watching the kubelet-side watch/patch logic in a debugger; the API server simply won't be able to dial the kubelet back. For a proper cert/key pair you can run `dotnet run --project src/Sharplet.CSR` (it performs the in-cluster CSR create/approve dance and prints the issued cert), or use Helm's generated secret:
+Outside a pod there's no `VKUBELET_POD_IP`, so the node falls back to `127.0.0.1` as its address. That's fine for watching the kubelet-side watch/patch logic in a debugger, but the API server cannot proxy to the kubelet at that address: `127.0.0.1` resolves against the API server's own loopback (on minikube that's the VM's real kubelet, which doesn't know the virtual pods and answers `404`), so `kubectl logs` and k9s show nothing for pods on the virtual node. The kubelet logs a warning when it advertises the loopback address.
+
+To get `kubectl logs` and k9s streaming pod logs while debugging on your workstation, set `VKUBELET_POD_IP` to the IP the cluster's API server uses to reach your machine, then start the kubelet:
+
+- **minikube with a VM driver (podman, qemu, ...)** — the host IP as seen from the minikube VM, i.e. the gateway of the VM's default route:
+  `minikube ssh "ip route show default"` → the address on the `default via <ip>` line.
+- **minikube with the docker driver** — the Docker bridge gateway on the host, usually `172.17.0.1`.
 
 ```bash
-kubectl get secret sharplet -o jsonpath='{.data.cert\.pem}' | base64 -d > certs/cert.pem
-kubectl get secret sharplet -o jsonpath='{.data.key\.pem}'  | base64 -d > certs/key.pem
+export VKUBELET_POD_IP=192.168.49.1   # e.g. the minikube podman/qemu host as seen from the VM
+export APISERVER_CERT_LOCATION="$HOME/.sharplet/cert.pem"
+export APISERVER_KEY_LOCATION="$HOME/.sharplet/key.pem"
+
+dotnet run --project src/Sharplet.Samplekubelet
 ```
+
+Within one node-status tick (≤ 30 s) the node re-advertises that address and the API server's proxy reaches the kubelet on `10250` — no port-forward needed. Clusters that verify the kubelet's serving certificate against the dialed IP will also want a cert whose SAN contains that IP: set `VKUBELET_POD_IP` and re-run `dotnet run --project src/Sharplet.CSR` before starting the kubelet (it adds the pod IP and the node name to the SAN, signed by the cluster CA).
 
 ### Troubleshooting
 
@@ -175,8 +186,8 @@ kubectl get secret sharplet -o jsonpath='{.data.key\.pem}'  | base64 -d > certs/
 | `sharplet` pod `CrashLoopBackOff` with `FileNotFoundException: /etc/sharplet/cert.pem` | Stale image that predates `APISERVER_CERT_LOCATION` support — rebuild the image, or mount the secret where the old code looks: `helm upgrade sharplet ./charts/sharplet --set 'volumeMounts[0].mountPath=/etc/sharplet'`. |
 | Node `sharplet` never appears, or stays `NotReady` | `kubectl logs -l app.kubernetes.io/name=sharplet` — usually RBAC or a missing in-cluster config. `kubectl get events` helps too. |
 | Sample pod stuck `Pending` | It must carry the `kubernetes.io/sharplet` toleration (it's in `test.yaml`); confirm the `sharplet` node is `Ready` and the kubelet status tracker is running (logs). |
-| `kubectl logs <virtual pod>` fails with an x509 error | The chart-generated kubelet cert is signed by the chart's CA and only has DNS SANs; some clusters reject it when the API server dials the pod IP. On minikube the API server's requests to the kubelet went through fine — if yours don't, use the `10255` port-forward above instead. |
-| Node address shows `127.0.0.1` | The pod isn't getting `VKUBELET_POD_IP` — the chart sets it; if you deployed your own manifest, add `valueFrom: fieldRef: status.podIP` under that name. |
+| `kubectl logs <virtual pod>` fails with an x509 error | The API server validates the kubelet's serving certificate. The chart-generated cert is signed by the chart's own CA, which most clusters don't trust — issue a cluster-CA-signed cert with the `Sharplet.CSR` tool instead (it also puts the node name and `VKUBELET_POD_IP`, when set, into the SAN). On minikube the chart-generated cert happens to be accepted. |
+| `kubectl logs` / k9s show nothing for a virtual pod (API server answers `404` for `pods/log`) | The node advertises `127.0.0.1` as its `InternalIP`, so the API server proxies the log request to its own loopback instead of the virtual kubelet (on minikube: the VM's real kubelet, which doesn't know the pod). In-cluster: the pod isn't getting `VKUBELET_POD_IP` — the chart sets it; a hand-rolled manifest needs `valueFrom: fieldRef: status.podIP` under that name. Running on your workstation: see [Debugging in your IDE](#debugging-in-your-ide) — set `VKUBELET_POD_IP` to the IP the cluster uses to reach your machine. |
 
 ### Teardown
 
