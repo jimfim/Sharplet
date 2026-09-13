@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 using k8s;
+using k8s.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -34,12 +35,16 @@ public static class SharpletExtensions
     }
 
     /// <summary>
-    /// Maps the kubelet API endpoints (<c>/containerLogs/{namespace}/{pod}/{container}</c>) and the
-    /// health probes (<c>/livez</c>, <c>/readyz</c>, <c>/healthz</c>) onto the application. The probes
-    /// are designed for the read-only 10255 port: they require no client certificate. The log
-    /// endpoint streams the lines produced by the registered <see cref="IPodController"/> (mock
-    /// provider by default); the API server proxies <c>kubectl logs</c>/k9s requests for pods on
-    /// the virtual node to it.
+    /// Maps the kubelet API endpoints (<c>/pods</c>, <c>/runningpods</c>, <c>/stats/sum</c>,
+    /// <c>/containerLogs/{namespace}/{pod}/{container}</c>) and the health probes (<c>/livez</c>,
+    /// <c>/readyz</c>, <c>/healthz</c>) onto the application. The probes are designed for the
+    /// read-only 10255 port: they require no client certificate. The pod and log endpoints serve
+    /// the data reported by the registered <see cref="IPodController"/> (mock provider by default);
+    /// the API server proxies <c>kubectl get pods</c>/<c>kubectl logs</c> requests for pods on the
+    /// virtual node to them. <c>/stats/sum</c> reports zero resource usage for the pods the
+    /// provider knows about, which is what the reference implementation measures: providers that
+    /// track real usage should map their own <c>/stats/sum</c>. The kubelet exec and port-forward
+    /// endpoints are not implemented: pods on the virtual node are not real containers.
     /// </summary>
     public static WebApplication MapKubeletEndpoints(this WebApplication app)
     {
@@ -61,6 +66,63 @@ public static class SharpletExtensions
                 }
 
                 await context.Response.CompleteAsync();
+            });
+        app.MapGet("/pods",
+            async (IPodController podController, CancellationToken cancellationToken) =>
+            {
+                // The provider is the source of truth for the pods on the virtual node; the API
+                // server proxies node /pods requests through here.
+                IEnumerable<V1Pod> pods = await podController.GetPodsAsync(cancellationToken);
+                return Results.Json(pods);
+            });
+        app.MapGet("/runningpods",
+            async (IPodController podController, CancellationToken cancellationToken) =>
+            {
+                // Legacy kubelet endpoint: only pods the provider reports as Running are listed.
+                IEnumerable<V1Pod> pods = await podController.GetPodsAsync(cancellationToken);
+                List<V1Pod> running = pods.Where(pod => pod.Status is { Phase: "Running" }).ToList();
+                return Results.Json(running);
+            });
+        app.MapGet("/stats/sum",
+            async (IPodController podController, SharpConfig config, CancellationToken cancellationToken) =>
+            {
+                // The reference implementation runs nothing real, so every stat is zero; see the
+                // type docs of <see cref="StatsSummary"/> for the provider-side contract.
+                DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+                IEnumerable<V1Pod> pods = await podController.GetPodsAsync(cancellationToken);
+                StatsSummary summary = new()
+                {
+                    Node = new NodeStats
+                    {
+                        Node = config.NodeName,
+                        Timestamp = timestamp,
+                        Cpu = new CpuStats { Time = timestamp },
+                        Memory = new MemoryStats { Time = timestamp },
+                        Network = new NetworkStats { Time = timestamp },
+                    },
+                    Pods = pods.Select(pod => new PodStats
+                    {
+                        PodRef = new PodReference
+                        {
+                            Reference = pod.Metadata,
+                            Timestamp = timestamp,
+                        },
+                        Cpu = new CpuStats { Time = timestamp },
+                        Memory = new MemoryStats { Time = timestamp },
+                        Network = new NetworkStats { Time = timestamp },
+                        Containers = pod.Spec?.Containers is { } containers
+                            ? containers.Select(container => new ContainerStats
+                            {
+                                Name = container.Name,
+                                Cpu = new CpuStats { Time = timestamp },
+                                Memory = new MemoryStats { Time = timestamp },
+                                Rootfs = new FilesystemStats { Device = "rootfs", Time = timestamp },
+                                Logs = new FilesystemStats { Device = "logs", Time = timestamp },
+                            }).ToList()
+                            : new List<ContainerStats>(),
+                    }).ToList(),
+                };
+                return Results.Json(summary);
             });
         app.MapGet("/livez", () => Results.Ok("alive"));
         app.MapGet("/readyz", (IServiceProvider services) => KubeletReadyResult(services));
