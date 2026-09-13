@@ -1,6 +1,7 @@
 ﻿using Sharplet.Core;
+using Sharplet.Provider.Mock;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole();
 builder.Logging.AddConsole();
 builder.Configuration.SetBasePath(Directory.GetCurrentDirectory())
@@ -13,8 +14,13 @@ builder.AddVirtualKubelet(new SharpConfig
     PodStatusUpdateInterval = 15,
     NodeStatusUpdateInterval = 30,
     NodeMaxPodCount = 6
+}, services =>
+{
+    // The sample kubelet runs the reference (mock) provider.
+    services.AddSingleton<IPodController, MockPodController>();
+    services.AddSingleton<INodeController, MockNodeController>();
 });
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 app.MapKubeletEndpoints();
 app.Run();

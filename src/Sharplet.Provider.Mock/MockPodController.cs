@@ -51,13 +51,8 @@ public class MockPodController : IPodController
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GetPodStatusAsync");
-        var podAsync = await _kubernetes.CoreV1.ReadNamespacedPodWithHttpMessagesAsync(name,@namespace, cancellationToken: cancellationToken);
-        
-        if (podAsync == null)
-        {
-            return null;
-        }
-        
+        var podAsync = await _kubernetes.CoreV1.ReadNamespacedPodWithHttpMessagesAsync(name, @namespace, cancellationToken: cancellationToken);
+
         var containerStatusList = podAsync.Body.Spec.Containers.Select(container => new V1ContainerStatus
             {
                 Image = container.Image,
@@ -68,8 +63,8 @@ public class MockPodController : IPodController
                 State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = DateTime.Now } }
             })
             .ToList();
-        var localIp = Environment.GetEnvironmentVariable("POD_IP");
-        Console.WriteLine($"setting pod ip to: {localIp}");
+        string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        _logger.LogDebug("setting pod ip to {PodIp}", localIp);
         var status = new V1PodStatus
         {
             Phase = "Running",

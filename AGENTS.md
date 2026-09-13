@@ -16,9 +16,9 @@ Consequences for how you work here:
 
 | Path | What it is |
 | --- | --- |
-| `src/Sharplet.slnx` | Solution (slnx format): Core (library), CSR (tools), Samplekubelet (implementation), plus Provider.Mock |
-| `src/Sharplet.Core` | Class library, net10.0. Public contract: `IPodController`, `INodeController`, `IEventWatcher`. Hosted services (`PodControllerService`, `NodeControllerService`, `EventWatcherService`) watch the API server and report status. `SharpletExtensions.AddVirtualKubelet(SharpConfig)` is the DI entry point. Packaged to NuGet (`GeneratePackageOnBuild`). |
-| `src/Sharplet.Provider.Mock` | Reference provider implementation (mock). The template 3rd parties should copy. |
+| `src/Sharplet.slnx` | Solution (slnx format): Core (library), CSR (tools), Samplekubelet (implementation), plus Provider.Mock and the two test projects |
+| `src/Sharplet.Core` | Class library, net10.0. Public contract: `IPodController`, `INodeController`, `IEventWatcher`. Hosted services (`PodControllerService`, `NodeControllerService`, `EventWatcherService`) watch the API server and report status. `SharpletExtensions.AddVirtualKubelet(SharpConfig)` is the DI entry point: it **requires** the consumer to register an `IPodController` / `INodeController` (there is no built-in default; it throws at startup otherwise). Packaged to NuGet (`GeneratePackageOnBuild`). |
+| `src/Sharplet.Provider.Mock` | Reference provider implementation (mock) — the provider `Sharplet.Samplekubelet` runs, and the template 3rd parties should copy. |
 | `src/Sharplet.Samplekubelet` | ASP.NET Core app, net10.0. The deployable kubelet: HTTPS on `10250` (client-cert), `10255` for metrics; entrypoint of the Docker image (`Sharplet.Samplekubelet.dll`). |
 | `src/Sharplet.CSR` | Console helper for the kubelet certificate signing request flow. |
 | `charts/sharplet` | Helm chart that deploys the Samplekubelet image. |
@@ -92,7 +92,7 @@ Logging:
 ## Architecture rules
 
 - **Public API stability**: anything `public` in `Sharplet.Core` is shipped NuGet API. Don't remove or change signatures without an explicit breaking-change decision. Versioning is computed by GitVersion in CI (branch/tag driven) — **never hand-edit version numbers** in `.csproj` files.
-- **Registration**: new services, watchers, controllers, and config are registered in `SharpletExtensions.AddKubelet(...)`. Use constructor injection everywhere; no statics, no service-locator patterns.
+- **Registration**: new services, watchers, controllers, and config are registered in `SharpletExtensions.AddVirtualKubelet(...)`. Use constructor injection everywhere; no statics, no service-locator patterns.
 - **Provider boundary**: `Sharplet.Core` must stay provider-agnostic. Provider-specific logic lives in separate `Sharplet.Provider.*` projects that implement the Core interfaces — follow the `Sharplet.Provider.Mock` project as the reference layout.
 - **Long-running work** lives in `BackgroundService` hosted services; all Kubernetes API calls go through the injected `IKubernetes` (from the `KubernetesClient` package, `k8s` / `k8s.Models` namespaces) and pass through the ambient `CancellationToken`.
 - **Package upgrades**: `KubernetesClient` and other package versions (centralized in `src/Directory.Packages.props`) are managed by Dependabot. Don't hand-bump package versions; review the Dependabot PRs instead.

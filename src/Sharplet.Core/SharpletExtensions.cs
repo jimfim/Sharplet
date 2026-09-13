@@ -21,9 +21,9 @@ public static class SharpletExtensions
     /// <param name="builder"></param>
     /// <param name="config"></param>
     /// <param name="configureProvider">
-    /// Optional callback that registers the pod/node provider. Implement <see cref="IPodController"/>
-    /// and <see cref="INodeController"/> (plus any supporting services) and add them here. When omitted,
-    /// the mock provider is registered for any of those services that is not otherwise registered.
+    /// Callback that registers the pod/node provider. Implement <see cref="IPodController"/> and
+    /// <see cref="INodeController"/> (plus any supporting services) and add them here. A kubelet
+    /// that registers neither fails to start: there is no built-in default provider.
     /// </param>
     /// <returns></returns>
     public static WebApplicationBuilder AddVirtualKubelet(this WebApplicationBuilder builder, SharpConfig config,
@@ -39,7 +39,7 @@ public static class SharpletExtensions
     /// <c>/containerLogs/{namespace}/{pod}/{container}</c>) and the health probes (<c>/livez</c>,
     /// <c>/readyz</c>, <c>/healthz</c>) onto the application. The probes are designed for the
     /// read-only 10255 port: they require no client certificate. The pod and log endpoints serve
-    /// the data reported by the registered <see cref="IPodController"/> (mock provider by default);
+    /// the data reported by the registered <see cref="IPodController"/>;
     /// the API server proxies <c>kubectl get pods</c>/<c>kubectl logs</c> requests for pods on the
     /// virtual node to them. <c>/stats/sum</c> reports zero resource usage for the pods the
     /// provider knows about, which is what the reference implementation measures: providers that
@@ -183,19 +183,25 @@ public static class SharpletExtensions
             ? KubernetesClientConfiguration.InClusterConfig()
             : KubernetesClientConfiguration.BuildConfigFromConfigFile();
         collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(kubernetesConfig));
-        // Consumer registration point: pass a callback to register a custom provider (implement
-        // IPodController / INodeController plus any supporting services). The mock provider below
-        // only fills in services that are still unregistered, so a consumer-provided provider is
-        // never clobbered by last-registration-wins.
+        // Consumer registration point: pass a callback to register the pod/node provider
+        // (implement IPodController / INodeController plus any supporting services).
         configureProvider?.Invoke(collection.Services);
-        if (collection.Services.Any(descriptor => descriptor.ServiceType == typeof(IPodController)) is false)
+        // A virtual kubelet cannot run without a provider. Fail fast at construction time with an
+        // actionable message instead of a null reference deep inside the status services.
+        List<Type> candidates = new()
         {
-            collection.Services.AddSingleton<IPodController, MockPodController>();
-        }
-
-        if (collection.Services.Any(descriptor => descriptor.ServiceType == typeof(INodeController)) is false)
+            typeof(IPodController),
+            typeof(INodeController),
+        };
+        List<Type> missing = candidates
+            .Where(serviceType => collection.Services.Any(descriptor => descriptor.ServiceType == serviceType) is false)
+            .ToList();
+        if (missing.Count > 0)
         {
-            collection.Services.AddSingleton<INodeController, MockNodeController>();
+            throw new InvalidOperationException(
+                $"the virtual kubelet has no {string.Join(", ", missing.Select(serviceType => serviceType.Name))} registered. " +
+                "Implement the interface(s) and register them via the configureProvider callback of AddVirtualKubelet " +
+                "(Sharplet.Provider.Mock is the reference layout; see Sharplet.Samplekubelet's Program.cs)");
         }
 
         // Registered explicitly (not via AddHostedService<T>) because the web host builder

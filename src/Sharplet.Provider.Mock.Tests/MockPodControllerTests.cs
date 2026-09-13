@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 
-namespace Sharplet.Core.Tests;
+namespace Sharplet.Provider.Mock.Tests;
 
 public class MockPodControllerTests
 {

@@ -17,7 +17,7 @@ public class MockNodeController : INodeController
         _logger = logger;
         _kubernetes = kubernetes;
     }
-    
+
     public async Task CreateNodeAsync(V1Node node, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("starting node");
@@ -50,8 +50,8 @@ public class MockNodeController : INodeController
                     PodCIDR = "10.244.0.0/24",
                     Taints = new List<V1Taint>
                     {
-                        new V1Taint { Effect = "NoSchedule", Value = "kubernetes.io/sharplet" },
-                        new V1Taint { Effect = "NoExecute", Value = "kubernetes.io/sharplet" }
+                        new V1Taint { Effect = "NoSchedule", Key = "kubernetes.io/sharplet" },
+                        new V1Taint { Effect = "NoExecute", Key = "kubernetes.io/sharplet" }
                     }
                 },
                 Status = new V1NodeStatus
@@ -88,10 +88,7 @@ public class MockNodeController : INodeController
                         KubeletVersion = "v1.15.2-vk-N/A",
                         OperatingSystem = "linux"
                     },
-                    DaemonEndpoints = new V1NodeDaemonEndpoints
-                    {
-                        KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 }
-                    }
+                    DaemonEndpoints = new V1NodeDaemonEndpoints { KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 } }
                 }
             }, cancellationToken: cancellationToken);
         }
@@ -151,10 +148,7 @@ public class MockNodeController : INodeController
                 KubeletVersion = "v1.15.2-vk-N/A",
                 OperatingSystem = "linux"
             },
-            DaemonEndpoints = new V1NodeDaemonEndpoints
-            {
-                KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 }
-            }
+            DaemonEndpoints = new V1NodeDaemonEndpoints { KubeletEndpoint = new V1DaemonEndpoint { Port = 10250 } }
         });
     }
 
