@@ -12,7 +12,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: {{ include "sharplet.serviceAccountName" . }}
-  namespace: default
+  namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
