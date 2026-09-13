@@ -26,7 +26,9 @@ public interface IPodController
     Task UpdatePodAsync(V1Pod pod, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Deletes an existing pod from the virtual node.
+    /// Deletes an existing pod from the virtual node. The pod object has already been deleted from
+    /// the API server by the user or controller; implementations must only release local state
+    /// (containers, resources) and must not delete the API object.
     /// </summary>
     /// <param name="pod"></param>
     /// <param name="cancellationToken"></param>
