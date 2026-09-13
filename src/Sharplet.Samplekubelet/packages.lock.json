@@ -60,6 +60,13 @@
         "dependencies": {
           "KubernetesClient": "[19.0.2, )"
         }
+      },
+      "sharplet.provider.mock": {
+        "type": "Project",
+        "dependencies": {
+          "KubernetesClient": "[19.0.2, )",
+          "Sharplet.Core": "[1.0.0, )"
+        }
       }
     }
   }

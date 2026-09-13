@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/test/" Id="a068c935-e151-4320-9f31-5b68e5dd20d3">
     <Project Path="Sharplet.Core.Tests/Sharplet.Core.Tests.csproj" Name="Sharplet.Core.Tests" Id="7a9781d3-404c-49f2-8f33-57096581ad3d" />
+    <Project Path="Sharplet.Provider.Mock.Tests/Sharplet.Provider.Mock.Tests.csproj" Name="Sharplet.Provider.Mock.Tests" Id="2f23d808-b852-4173-9c4c-6bf800f0f6b2" />
   </Folder>
   <Folder Name="/tools/" Id="bae17c42-8f83-4b3a-af3f-74d2924277b1">
     <Project Path="Sharplet.CSR/Sharplet.CSR.csproj" Name="Sharplet.CSR" Id="3dc13766-ba2e-4992-9668-f542b5820029" />
