@@ -49,6 +49,13 @@ jobs:
         run: |
           .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
           dotnet build src
+          # The xunit.v3 (Microsoft.Testing.Platform) test projects are self-executing
+          # apps: `dotnet test` exits without running them, so invoke the built test
+          # assemblies directly. Executing the instrumented test assemblies is what lets
+          # the scanner collect coverage for the quality-gate "new coverage" condition.
+          Get-ChildItem src -Directory | Where-Object { $_.Name -like "*.Tests" } | ForEach-Object {
+              dotnet "src/$($_.Name)/bin/Debug/net10.0/$($_.Name).dll"
+          }
           .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
       # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
       # quality gate; this step polls the gate status from the scan report and
