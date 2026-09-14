@@ -58,7 +58,10 @@ internal class EventWatcher : IEventWatcher
                 {
                     // A watch reconnect re-lists every pod: ones that already started on this
                     // node are not new starts.
-                    _logger.LogDebug("Item {Name} already tracked; ignoring re-listed Added event", item.Name());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("Item {Name} already tracked; ignoring re-listed Added event", item.Name());
+                    }
                     return;
                 }
                 await StartPodAsync(item, podKey);
@@ -69,7 +72,10 @@ internal class EventWatcher : IEventWatcher
                 {
                     // Status-only churn: this kubelet's own periodic status patch (or an
                     // equivalent write) bumped the resourceVersion. Nothing to react to.
-                    _logger.LogDebug("Item {Name} status-only change; ignoring", item.Name());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("Item {Name} status-only change; ignoring", item.Name());
+                    }
                     return;
                 }
                 if (_seenSpecHashes.ContainsKey(podKey))
@@ -105,7 +111,10 @@ internal class EventWatcher : IEventWatcher
 
     private async Task StartPodAsync(V1Pod item, string podKey)
     {
-        _logger.LogInformation("Item Added {Name} on Node {Node}", item.Name(), item.Spec.NodeName);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Item Added {Name} on Node {Node}", item.Name(), item.Spec.NodeName);
+        }
         await _podController.CreatePodAsync(item);
         await PublishPodEventAsync(item, "Pod Created", "Started", "pod started");
         _seenSpecHashes[podKey] = ComputeSpecHash(item);
@@ -113,7 +122,10 @@ internal class EventWatcher : IEventWatcher
 
     private async Task PublishPodEventAsync(V1Pod item, string generateName, string reason, string message)
     {
-        _logger.LogInformation("Publishing Pod Event {Reason} for {Name}", reason, item.Name());
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Publishing Pod Event {Reason} for {Name}", reason, item.Name());
+        }
         await _kubernetes.CoreV1.CreateNamespacedEventAsync(new Corev1Event
         {
             InvolvedObject = new V1ObjectReference

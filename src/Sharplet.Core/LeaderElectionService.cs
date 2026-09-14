@@ -68,9 +68,27 @@ public class LeaderElectionService : BackgroundService
                     RetryPeriod = RetryPeriod
                 };
                 LeaderElector elector = new(electionConfig);
-                elector.OnNewLeader += leader => _logger.LogInformation("node lease {LeaseName} in {Namespace} held by {Leader}", _config.NodeName, LeaseNamespace, leader);
-                elector.OnStartedLeading += () => _logger.LogInformation("sharplet {Identity} acquired leadership for node {NodeName}", identity, _config.NodeName);
-                elector.OnStoppedLeading += () => _logger.LogInformation("sharplet {Identity} stopped leading for node {NodeName}", identity, _config.NodeName);
+                elector.OnNewLeader += leader =>
+                {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("node lease {LeaseName} in {Namespace} held by {Leader}", _config.NodeName, LeaseNamespace, leader);
+                    }
+                };
+                elector.OnStartedLeading += () =>
+                {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("sharplet {Identity} acquired leadership for node {NodeName}", identity, _config.NodeName);
+                    }
+                };
+                elector.OnStoppedLeading += () =>
+                {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("sharplet {Identity} stopped leading for node {NodeName}", identity, _config.NodeName);
+                    }
+                };
                 elector.OnError += error =>
                 {
                     if (error is OperationCanceledException)
@@ -113,7 +131,10 @@ public class LeaderElectionService : BackgroundService
                     }
                 },
                 cancellationToken: cancellationToken);
-            _logger.LogInformation("created namespace {Namespace}", LeaseNamespace);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("created namespace {Namespace}", LeaseNamespace);
+            }
         }
         catch (HttpOperationException e) when (e.Response?.StatusCode == HttpStatusCode.Conflict)
         {
@@ -149,7 +170,10 @@ public class LeaderElectionService : BackgroundService
         try
         {
             await _kubernetes.CoordinationV1.ReplaceNamespacedLeaseAsync(lease, _config.NodeName, LeaseNamespace, cancellationToken: cancellationToken);
-            _logger.LogInformation("completed lease record for {LeaseName} in {Namespace}", _config.NodeName, LeaseNamespace);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("completed lease record for {LeaseName} in {Namespace}", _config.NodeName, LeaseNamespace);
+            }
         }
         catch (HttpOperationException e) when (e.Response?.StatusCode == HttpStatusCode.Conflict)
         {
