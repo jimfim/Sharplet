@@ -72,8 +72,14 @@ public class NodeControllerService : BackgroundService
             {
                 // The node object is missing (e.g. first boot ran before the API was
                 // reachable, or the control plane deleted it): ask the provider to
-                // (re)create it and report its status on the next tick.
-                _logger.LogInformation("node {NodeName} not found; asking the provider to create it", _config.NodeName);
+                // (re)create it and report its status on the next tick. The 404
+                // response is handed to the logger so the event stays traceable, and
+                // the IsEnabled guard keeps the argument evaluation out of the
+                // disabled-level path.
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.LogInformation(e, "node {NodeName} not found; asking the provider to create it", _config.NodeName);
+                }
                 try
                 {
                     await _nodeController.CreateNodeAsync(new V1Node()
