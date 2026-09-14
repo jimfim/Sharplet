@@ -141,7 +141,7 @@ public static class SharpletExtensions
             : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
-    private static WebApplicationBuilder ConfigureKubeletListeners(this WebApplicationBuilder builder)
+    private static void ConfigureKubeletListeners(this WebApplicationBuilder builder)
     {
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -173,10 +173,9 @@ public static class SharpletExtensions
                 });
             });
         });
-        return builder;
     }
-    
-    private static WebApplicationBuilder AddVirtualKubeletServices(this WebApplicationBuilder collection,
+
+    private static void AddVirtualKubeletServices(this WebApplicationBuilder collection,
         SharpConfig configuration, Action<IServiceCollection>? configureProvider)
     {
         KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
@@ -214,7 +213,6 @@ public static class SharpletExtensions
         collection.Services.AddHostedService<PodControllerService>();
         collection.Services.AddSingleton(configuration);
         collection.Services.AddSingleton<IEventWatcher, EventWatcher>();
-        return collection;
     }
 }
 
