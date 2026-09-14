@@ -160,4 +160,83 @@ public class EventWatcherTests
         Assert.Empty(_deletedPods);
         Assert.Empty(_emittedEvents);
     }
+
+    [Fact]
+    public async Task Error_Event_TakesNoAction()
+    {
+        await _watcher.HandlePodEventAsync(WatchEventType.Error, CreatePod());
+
+        Assert.Empty(_createdPods);
+        Assert.Empty(_updatedPods);
+        Assert.Empty(_deletedPods);
+        Assert.Empty(_emittedEvents);
+    }
+
+    [Fact]
+    public async Task Bookmark_Event_TakesNoAction()
+    {
+        await _watcher.HandlePodEventAsync(WatchEventType.Bookmark, CreatePod());
+
+        Assert.Empty(_createdPods);
+        Assert.Empty(_updatedPods);
+        Assert.Empty(_deletedPods);
+        Assert.Empty(_emittedEvents);
+    }
+
+    [Fact]
+    public async Task WatchEventStream_StartsWatchingAllNamespaces()
+    {
+        // The full watch pipeline cannot be driven from a mocked IKubernetes: the client's
+        // watcher requires its internal LineSeparatedHttpContent on the response, which a
+        // substitute cannot produce (it logs "not a watchable request" instead). So this
+        // covers what is observable: WatchEventStream starts the all-namespaces pod watch
+        // with watch=true; event handling from that stream is covered by the
+        // HandlePodEventAsync tests.
+        ICoreV1Operations coreV1 = Substitute.For<ICoreV1Operations>();
+        coreV1.CreateNamespacedEventWithHttpMessagesAsync(
+            Arg.Any<Corev1Event>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(),
+            Arg.Any<CancellationToken>())
+            .Returns(new HttpOperationResponse<Corev1Event>());
+        bool? watchFlag = null;
+        coreV1.ListPodForAllNamespacesWithHttpMessagesAsync(
+                Arg.Any<bool?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int?>(),
+                Arg.Any<bool?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(), Arg.Any<int?>(),
+                Arg.Do<bool?>(watch => watchFlag = watch),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HttpOperationResponse<V1PodList>()));
+        IKubernetes kubernetes = Substitute.For<IKubernetes>();
+        kubernetes.CoreV1.Returns(coreV1);
+
+        IPodController podController = Substitute.For<IPodController>();
+        EventWatcher watcher = new EventWatcher(NullLogger<EventWatcher>.Instance, kubernetes, podController,
+            new SharpConfig { NodeName = "sharplet" });
+
+        await watcher.WatchEventStream();
+
+        await TestHelper.WaitUntilAsync(() => watchFlag is true);
+    }
+
+    [Fact]
+    public async Task EventPublishFailure_PropagatesFromPodEventHandling()
+    {
+        // A failed event publish surfaces out of the handler. The watch stream dispatches
+        // handlers fire-and-forget, so today that faults an unobserved task: kept explicit
+        // so a future hardening (catch + log inside the dispatch) has to update this test.
+        ICoreV1Operations coreV1 = Substitute.For<ICoreV1Operations>();
+        coreV1.CreateNamespacedEventWithHttpMessagesAsync(
+            Arg.Any<Corev1Event>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(),
+            Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<HttpOperationResponse<Corev1Event>>(new Exception("events api down")));
+        IKubernetes kubernetes = Substitute.For<IKubernetes>();
+        kubernetes.CoreV1.Returns(coreV1);
+
+        IPodController podController = Substitute.For<IPodController>();
+        podController.CreatePodAsync(Arg.Any<V1Pod>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        EventWatcher watcher = new EventWatcher(NullLogger<EventWatcher>.Instance, kubernetes, podController,
+            new SharpConfig { NodeName = "sharplet" });
+
+        await Assert.ThrowsAnyAsync<Exception>(() => watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod()));
+    }
 }
