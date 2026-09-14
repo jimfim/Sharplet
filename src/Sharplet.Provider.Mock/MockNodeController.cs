@@ -94,7 +94,14 @@ public class MockNodeController : INodeController
         }
         catch (HttpOperationException e)
         {
-            if (e.Response.StatusCode == HttpStatusCode.Conflict) return;
+            if (e.Response.StatusCode == HttpStatusCode.Conflict)
+            {
+                // The node object outlives the process (ttl annotation "0"), so a conflict on
+                // create is the expected path on every restart: keep the existing object.
+                _logger.LogInformation("node {NodeName} already exists; keeping the existing object", node.Name());
+                return;
+            }
+
             _logger.LogError(e, "creating node {NodeName} failed with status code {StatusCode}", node.Name(), e.Response.StatusCode);
             throw;
         }
