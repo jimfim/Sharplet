@@ -61,8 +61,8 @@ public static class SharpletExtensions
                     podNamespace, podID, containerName, cancellationToken);
                 await foreach (string line in lines)
                 {
-                    await context.Response.WriteAsync($"{line}\n");
-                    await context.Response.Body.FlushAsync();
+                    await context.Response.WriteAsync($"{line}\n", cancellationToken);
+                    await context.Response.Body.FlushAsync(cancellationToken);
                 }
 
                 await context.Response.CompleteAsync();
