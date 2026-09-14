@@ -12,6 +12,19 @@ public class MockNodeController : INodeController
     private readonly ILogger<MockNodeController> _logger;
     private readonly IKubernetes _kubernetes;
     private bool _loopbackWarned;
+    // Kubernetes node condition contract: the status alphabet ("True"/"False") and the
+    // well-known condition types. The API server silently accepts a typo'd status
+    // (e.g. "false"), which would leave the node never Ready, so the literals are
+    // constantized to make the contract explicit and typo-proof.
+    private const string ConditionTrue = "True";
+    private const string ConditionFalse = "False";
+    private const string ConditionReady = "Ready";
+    private const string ConditionOutOfDisk = "OutOfDisk";
+    private const string ConditionMemoryPressure = "MemoryPressure";
+    private const string ConditionDiskPressure = "DiskPressure";
+    private const string ConditionNetworkUnavailable = "NetworkUnavailable";
+    private const string ConditionPidPressure = "PIDPressure";
+
     public MockNodeController(ILogger<MockNodeController> logger, IKubernetes kubernetes)
     {
         _logger = logger;
@@ -75,12 +88,12 @@ public class MockNodeController : INodeController
                     },
                     Conditions = new List<V1NodeCondition>
                     {
-                        new V1NodeCondition { Status = "True", Type = "Ready", LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = "False", Type = "OutOfDisk", LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = "False", Type = "MemoryPressure", LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = "False", Type = "DiskPressure", LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = "False", Type = "NetworkUnavailable", LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = "False", Type = "PIDPressure", LastHeartbeatTime = now, LastTransitionTime = now }
+                        new V1NodeCondition { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
+                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
                     },
                     NodeInfo = new V1NodeSystemInfo
                     {
@@ -135,12 +148,12 @@ public class MockNodeController : INodeController
             },
             Conditions = new List<V1NodeCondition>
             {
-                new V1NodeCondition { Status = "True", Type = "Ready", LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = "False", Type = "OutOfDisk", LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = "False", Type = "MemoryPressure", LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = "False", Type = "DiskPressure", LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = "False", Type = "NetworkUnavailable", LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = "False", Type = "PIDPressure", LastHeartbeatTime = now, LastTransitionTime = now }
+                new V1NodeCondition { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
+                new V1NodeCondition { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
             },
             NodeInfo = new V1NodeSystemInfo
             {
