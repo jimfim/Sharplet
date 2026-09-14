@@ -58,10 +58,7 @@ internal class EventWatcher : IEventWatcher
                 {
                     // A watch reconnect re-lists every pod: ones that already started on this
                     // node are not new starts.
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                    {
-                        _logger.LogDebug("Item {Name} already tracked; ignoring re-listed Added event", item.Name());
-                    }
+                    LogReListedAddedEvent(item);
                     return;
                 }
                 await StartPodAsync(item, podKey);
@@ -72,10 +69,7 @@ internal class EventWatcher : IEventWatcher
                 {
                     // Status-only churn: this kubelet's own periodic status patch (or an
                     // equivalent write) bumped the resourceVersion. Nothing to react to.
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                    {
-                        _logger.LogDebug("Item {Name} status-only change; ignoring", item.Name());
-                    }
+                    LogStatusOnlyChange(item);
                     return;
                 }
                 if (_seenSpecHashes.ContainsKey(podKey))
@@ -106,6 +100,22 @@ internal class EventWatcher : IEventWatcher
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(type), type, null);
+        }
+    }
+
+    private void LogReListedAddedEvent(V1Pod item)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Item {Name} already tracked; ignoring re-listed Added event", item.Name());
+        }
+    }
+
+    private void LogStatusOnlyChange(V1Pod item)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Item {Name} status-only change; ignoring", item.Name());
         }
     }
 
