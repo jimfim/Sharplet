@@ -41,7 +41,7 @@ public class LeaderElectionService : BackgroundService
     private readonly SharpConfig _config;
     private readonly IKubernetes _kubernetes;
     private readonly ILogger<LeaderElectionService> _logger;
-    private string _identity;
+    private readonly string _identity;
     private LeaderElector? _elector;
 
     public LeaderElectionService(SharpConfig config, IKubernetes kubernetes, ILogger<LeaderElectionService> logger)
