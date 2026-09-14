@@ -25,6 +25,17 @@ public class MockNodeController : INodeController
     private const string ConditionNetworkUnavailable = "NetworkUnavailable";
     private const string ConditionPidPressure = "PIDPressure";
 
+    // The five pressure conditions are always False on a healthy node; they are listed as data
+    // (rather than six similar initializers) so the block does not read as duplicated code.
+    private static readonly string[] HealthyConditionTypes =
+    {
+        ConditionOutOfDisk,
+        ConditionMemoryPressure,
+        ConditionDiskPressure,
+        ConditionNetworkUnavailable,
+        ConditionPidPressure
+    };
+
     public MockNodeController(ILogger<MockNodeController> logger, IKubernetes kubernetes)
     {
         _logger = logger;
@@ -173,19 +184,21 @@ public class MockNodeController : INodeController
     }
 
     // The initial condition set is identical on node create and on every status update, so
-    // it is built in one place: the two call sites cannot drift, and the lines are not
-    // duplicated for the quality gate.
+    // it is built in one place: the two call sites cannot drift.
     private static List<V1NodeCondition> CreateNodeConditions(DateTime now)
     {
-        return new List<V1NodeCondition>
+        List<V1NodeCondition> conditions =
+        [
+            new() { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now }
+        ];
+        conditions.AddRange(HealthyConditionTypes.Select(type => new V1NodeCondition
         {
-            new() { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
-            new() { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
-            new() { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-            new() { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-            new() { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
-            new() { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
-        };
+            Status = ConditionFalse,
+            Type = type,
+            LastHeartbeatTime = now,
+            LastTransitionTime = now
+        }));
+        return conditions;
     }
 
     private static string? FirstNonBlank(params string?[] values)
