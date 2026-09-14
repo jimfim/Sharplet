@@ -36,7 +36,10 @@ public class MockPodController : IPodController
     {
         // the pod object was already deleted by the user/controller; a provider only releases its local
         // state. Deleting the API object here would 404 and crash the kubelet.
-        _logger.LogInformation("DeletePodAsync {PodName}", pod.Name());
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("DeletePodAsync {PodName}", pod.Name());
+        }
         return Task.CompletedTask;
     }
 
@@ -64,7 +67,10 @@ public class MockPodController : IPodController
             })
             .ToList();
         string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
-        _logger.LogDebug("setting pod ip to {PodIp}", localIp);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("setting pod ip to {PodIp}", localIp);
+        }
         var status = new V1PodStatus
         {
             Phase = "Running",
