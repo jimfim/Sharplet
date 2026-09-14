@@ -86,15 +86,7 @@ public class MockNodeController : INodeController
                         { "memory", new ResourceQuantity("4032800Ki") },
                         { "pods", new ResourceQuantity("5") }
                     },
-                    Conditions = new List<V1NodeCondition>
-                    {
-                        new V1NodeCondition { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
-                        new V1NodeCondition { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
-                    },
+                    Conditions = CreateNodeConditions(now),
                     NodeInfo = new V1NodeSystemInfo
                     {
                         Architecture = "amd64",
@@ -146,15 +138,7 @@ public class MockNodeController : INodeController
                 { "memory", new ResourceQuantity("4032800Ki") },
                 { "pods", new ResourceQuantity("5") }
             },
-            Conditions = new List<V1NodeCondition>
-            {
-                new V1NodeCondition { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
-                new V1NodeCondition { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
-            },
+            Conditions = CreateNodeConditions(now),
             NodeInfo = new V1NodeSystemInfo
             {
                 Architecture = "amd64",
@@ -186,6 +170,22 @@ public class MockNodeController : INodeController
                 nodeName);
         }
         return localIp;
+    }
+
+    // The initial condition set is identical on node create and on every status update, so
+    // it is built in one place: the two call sites cannot drift, and the lines are not
+    // duplicated for the quality gate.
+    private static List<V1NodeCondition> CreateNodeConditions(DateTime now)
+    {
+        return new List<V1NodeCondition>
+        {
+            new() { Status = ConditionTrue, Type = ConditionReady, LastHeartbeatTime = now, LastTransitionTime = now },
+            new() { Status = ConditionFalse, Type = ConditionOutOfDisk, LastHeartbeatTime = now, LastTransitionTime = now },
+            new() { Status = ConditionFalse, Type = ConditionMemoryPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+            new() { Status = ConditionFalse, Type = ConditionDiskPressure, LastHeartbeatTime = now, LastTransitionTime = now },
+            new() { Status = ConditionFalse, Type = ConditionNetworkUnavailable, LastHeartbeatTime = now, LastTransitionTime = now },
+            new() { Status = ConditionFalse, Type = ConditionPidPressure, LastHeartbeatTime = now, LastTransitionTime = now }
+        };
     }
 
     private static string? FirstNonBlank(params string?[] values)
