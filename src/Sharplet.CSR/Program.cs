@@ -83,6 +83,57 @@ string ResolveCertDirectory()
     }
 }
 
+// Approve the CSR (DEV shortcut: the tool patches status.conditions itself, which only works
+// with cluster-admin; in production a human or an approval policy approves the
+// 'kubernetes.io/kubelet-serving' CSR instead - keep this path for throwaway clusters like
+// minikube only) and wait for the cluster to sign it. Returns the certificate PEM, or null
+// when the cluster has not signed the request.
+async Task<byte[]?> ApproveCertificateAsync(IKubernetes client, string name)
+{
+    JsonSerializerOptions serializeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+    V1CertificateSigningRequest readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
+    JsonDocument old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
+
+    List<V1CertificateSigningRequestCondition> replace = new()
+    {
+        new V1CertificateSigningRequestCondition
+        {
+            Status = "True",
+            Type = "Approved",
+            LastTransitionTime = DateTime.UtcNow,
+            LastUpdateTime = DateTime.UtcNow,
+            Message = "This certificate was approved by k8s client",
+            Reason = "Approve"
+        }
+    };
+    readCert.Status.Conditions = replace;
+
+    JsonDocument expected = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
+
+    JsonPatch patch = old.CreatePatch(expected);
+    await client.CertificatesV1.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch),
+        name);
+    await Task.Delay(2000);
+    V1CertificateSigningRequest latest = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
+    return latest.Status.Certificate;
+}
+
+// Load the signed certificate PEM and write it to disk, creating the target directory if needed.
+async Task WriteCertificateAsync(byte[] certificatePem, string certFile)
+{
+    X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(certificatePem);
+    string? certDir = Path.GetDirectoryName(certFile);
+    if (!string.IsNullOrEmpty(certDir))
+    {
+        Directory.CreateDirectory(certDir);
+    }
+    await File.WriteAllTextAsync(certFile, certificate.ExportCertificatePem());
+}
+
 string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(ResolveCertDirectory(), "cert.pem");
 string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(ResolveCertDirectory(), "key.pem");
 
@@ -118,52 +169,15 @@ V1CertificateSigningRequest request = new()
 
 await client.CertificatesV1.CreateCertificateSigningRequestAsync(request);
 
-JsonSerializerOptions serializeOptions = new()
-{
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    WriteIndented = true
-};
-V1CertificateSigningRequest readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-JsonDocument old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
+byte[]? certificate = await ApproveCertificateAsync(client, name);
 
-// DEV SHORTCUT: the tool approves its own CSR by patching status.conditions, which only works with
-// cluster-admin. In production, a human or an approval policy approves the 'kubernetes.io/kubelet-serving'
-// CSR instead; keep this path for throwaway clusters (minikube) only.
-List<V1CertificateSigningRequestCondition> replace = new()
-{
-    new V1CertificateSigningRequestCondition
-    {
-        Status = "True",
-        Type = "Approved",
-        LastTransitionTime = DateTime.UtcNow,
-        LastUpdateTime = DateTime.UtcNow,
-        Message = "This certificate was approved by k8s client",
-        Reason = "Approve"
-    }
-};
-readCert.Status.Conditions = replace;
-
-JsonDocument expected = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
-
-JsonPatch patch = old.CreatePatch(expected);
-await client.CertificatesV1.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch),
-    name);
-await Task.Delay(2000);
-V1CertificateSigningRequest latest = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-
-if (latest.Status.Certificate is null)
+if (certificate is null)
 {
     await Console.Error.WriteLineAsync($"CSR '{name}' was not signed by the cluster; nothing to write.");
     return 1;
 }
 
-X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(latest.Status.Certificate);
-string? certDir = Path.GetDirectoryName(certFile);
-if (!string.IsNullOrEmpty(certDir))
-{
-    Directory.CreateDirectory(certDir);
-}
-await File.WriteAllTextAsync(certFile, certificate.ExportCertificatePem());
+await WriteCertificateAsync(certificate, certFile);
 
 Console.WriteLine($"certificate written to {certFile}");
 Console.WriteLine($"private key written to {keyFile}");
