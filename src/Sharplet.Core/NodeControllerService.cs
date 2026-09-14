@@ -35,7 +35,7 @@ public class NodeControllerService : BackgroundService
         {
             try
             {
-                if (await timer.WaitForNextTickAsync(stoppingToken) is false)
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
                 {
                     continue;
                 }
@@ -47,61 +47,83 @@ public class NodeControllerService : BackgroundService
 
             // Only the leader holds the node lease and writes node status; followers skip
             // the tick and pick up work when they win the election.
-            if (_leaderElection.IsLeader is false)
+            if (!_leaderElection.IsLeader)
             {
                 continue;
             }
 
             try
             {
-                // A transient API error must not stop the host: the node keeps its last
-                // reported status while the API is unreachable, and the control plane's
-                // node monitor marks it NotReady once heartbeats go stale.
-                HttpOperationResponse<V1Node> node =
-                    await _kubernetes.CoreV1.ReadNodeWithHttpMessagesAsync(_config.NodeName, cancellationToken: stoppingToken);
-                V1NodeStatus status = await _nodeController.GetNodeStatusAsync(_config.NodeName, stoppingToken);
-                node.Body.Status = status;
-                await _kubernetes.CoreV1.PatchNodeStatusAsync(new V1Patch(node.Body, V1Patch.PatchType.MergePatch), _config.NodeName, cancellationToken: stoppingToken);
-                consecutiveFailures = 0;
+                consecutiveFailures = await UpdateNodeStatusAsync(consecutiveFailures, stoppingToken);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
-            catch (HttpOperationException e) when (e.Response?.StatusCode == HttpStatusCode.NotFound)
+        }
+    }
+
+    // Reads the node object, asks the provider for its status and merge-patches it. When
+    // the node object is missing the provider is asked to (re)create it. A transient API
+    // error must not stop the host: the node keeps its last reported status while the API
+    // is unreachable, and the control plane's node monitor marks it NotReady once
+    // heartbeats go stale. Returns the updated consecutive-failure count (0 on success).
+    private async Task<int> UpdateNodeStatusAsync(int consecutiveFailures, CancellationToken cancellationToken)
+    {
+        try
+        {
+            HttpOperationResponse<V1Node> node =
+                await _kubernetes.CoreV1.ReadNodeWithHttpMessagesAsync(_config.NodeName, cancellationToken: cancellationToken);
+            V1NodeStatus status = await _nodeController.GetNodeStatusAsync(_config.NodeName, cancellationToken);
+            node.Body.Status = status;
+            await _kubernetes.CoreV1.PatchNodeStatusAsync(new V1Patch(node.Body, V1Patch.PatchType.MergePatch), _config.NodeName, cancellationToken: cancellationToken);
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (HttpOperationException e) when (e.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            // The node object is missing (e.g. first boot ran before the API was
+            // reachable, or the control plane deleted it): ask the provider to
+            // (re)create it and report its status on the next tick. The 404
+            // response is handed to the logger so the event stays traceable, and
+            // the IsEnabled guard keeps the argument evaluation out of the
+            // disabled-level path.
+            if (_logger.IsEnabled(LogLevel.Information))
             {
-                // The node object is missing (e.g. first boot ran before the API was
-                // reachable, or the control plane deleted it): ask the provider to
-                // (re)create it and report its status on the next tick.
-                _logger.LogInformation("node {NodeName} not found; asking the provider to create it", _config.NodeName);
-                try
+                _logger.LogInformation(e, "node {NodeName} not found; asking the provider to create it", _config.NodeName);
+            }
+            try
+            {
+                await _nodeController.CreateNodeAsync(new V1Node()
                 {
-                    await _nodeController.CreateNodeAsync(new V1Node()
+                    Metadata = new V1ObjectMeta()
                     {
-                        Metadata = new V1ObjectMeta()
-                        {
-                            Name = _config.NodeName
-                        }
-                    }, stoppingToken);
-                    consecutiveFailures = 0;
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    consecutiveFailures++;
-                    _logger.LogError(exception, "node {NodeName} recreation failed; retrying after backoff", _config.NodeName);
-                    await Task.Delay(GetBackoff(consecutiveFailures), stoppingToken);
-                }
+                        Name = _config.NodeName
+                    }
+                }, cancellationToken);
+                return 0;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception exception)
             {
-                consecutiveFailures++;
-                _logger.LogError(exception, "node status update failed; retrying after backoff ({ConsecutiveFailures} consecutive failures)", consecutiveFailures);
-                await Task.Delay(GetBackoff(consecutiveFailures), stoppingToken);
+                int failures = consecutiveFailures + 1;
+                _logger.LogError(exception, "node {NodeName} recreation failed; retrying after backoff", _config.NodeName);
+                await Task.Delay(GetBackoff(failures), cancellationToken);
+                return failures;
             }
+        }
+        catch (Exception exception)
+        {
+            int failures = consecutiveFailures + 1;
+            _logger.LogError(exception, "node status update failed; retrying after backoff ({ConsecutiveFailures} consecutive failures)", failures);
+            await Task.Delay(GetBackoff(failures), cancellationToken);
+            return failures;
         }
     }
 

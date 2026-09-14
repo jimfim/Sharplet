@@ -61,8 +61,8 @@ public static class SharpletExtensions
                     podNamespace, podID, containerName, cancellationToken);
                 await foreach (string line in lines)
                 {
-                    await context.Response.WriteAsync($"{line}\n");
-                    await context.Response.Body.FlushAsync();
+                    await context.Response.WriteAsync($"{line}\n", cancellationToken);
+                    await context.Response.Body.FlushAsync(cancellationToken);
                 }
 
                 await context.Response.CompleteAsync();
@@ -141,7 +141,7 @@ public static class SharpletExtensions
             : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
-    private static WebApplicationBuilder ConfigureKubeletListeners(this WebApplicationBuilder builder)
+    private static void ConfigureKubeletListeners(this WebApplicationBuilder builder)
     {
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -150,7 +150,7 @@ public static class SharpletExtensions
             {
                 string certPath = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? "/etc/sharplet/cert.pem";
                 string keyPath = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? "/etc/sharplet/key.pem";
-                if (File.Exists(certPath) is false || File.Exists(keyPath) is false)
+                if (!File.Exists(certPath) || !File.Exists(keyPath))
                 {
                     // Local-debug fallback: the CSR tool writes to ~/.sharplet when /etc/sharplet is not writable.
                     string homeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sharplet");
@@ -173,10 +173,9 @@ public static class SharpletExtensions
                 });
             });
         });
-        return builder;
     }
-    
-    private static WebApplicationBuilder AddVirtualKubeletServices(this WebApplicationBuilder collection,
+
+    private static void AddVirtualKubeletServices(this WebApplicationBuilder collection,
         SharpConfig configuration, Action<IServiceCollection>? configureProvider)
     {
         KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
@@ -194,7 +193,7 @@ public static class SharpletExtensions
             typeof(INodeController),
         };
         List<Type> missing = candidates
-            .Where(serviceType => collection.Services.Any(descriptor => descriptor.ServiceType == serviceType) is false)
+            .Where(serviceType => !collection.Services.Any(descriptor => descriptor.ServiceType == serviceType))
             .ToList();
         if (missing.Count > 0)
         {
@@ -214,7 +213,6 @@ public static class SharpletExtensions
         collection.Services.AddHostedService<PodControllerService>();
         collection.Services.AddSingleton(configuration);
         collection.Services.AddSingleton<IEventWatcher, EventWatcher>();
-        return collection;
     }
 }
 

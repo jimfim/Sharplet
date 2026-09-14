@@ -1,95 +1,17 @@
-﻿using System.Net;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
-using Json.Patch;
+﻿using System.Text;
+using Sharplet.CSR;
 using k8s;
 using k8s.Models;
 
-string GenerateCertificate(string name, string keyFile)
-{
-    SubjectAlternativeNameBuilder sanBuilder = new();
-    sanBuilder.AddIpAddress(IPAddress.Loopback);
-
-    // the API server dials the kubelet by pod IP (the node's InternalIP); it may also resolve the node name,
-    // so both must be in the SAN or TLS validation on the server side fails
-    string? podIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP");
-    if (podIp is not null)
-    {
-        if (IPAddress.TryParse(podIp, out IPAddress? podIpAddress))
-        {
-            sanBuilder.AddIpAddress(podIpAddress);
-        }
-        else
-        {
-            Console.Error.WriteLine($"{podIp} (VKUBELET_POD_IP/POD_IP) is not a valid IP address; it will not be added to the certificate SAN");
-        }
-    }
-    sanBuilder.AddDnsName(name);
-    if (IPAddress.TryParse(name, out IPAddress? nameIpAddress))
-    {
-        sanBuilder.AddIpAddress(nameIpAddress);
-    }
-
-    X500DistinguishedName distinguishedName = new($"CN=system:node:{name},O=system:nodes");
-
-    using RSA rsa = RSA.Create(4096);
-    CertificateRequest request = new(distinguishedName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    string privateKeyPem = rsa.ExportRSAPrivateKeyPem();
-    string? keyDir = Path.GetDirectoryName(keyFile);
-    if (!string.IsNullOrEmpty(keyDir))
-    {
-        Directory.CreateDirectory(keyDir);
-    }
-    File.WriteAllText(keyFile, privateKeyPem);
-
-    request.CertificateExtensions.Add(
-        new X509KeyUsageExtension(X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature, false));
-    request.CertificateExtensions.Add(
-        new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, false)); // server auth
-
-    request.CertificateExtensions.Add(sanBuilder.Build());
-    byte[] csr = request.CreateSigningRequest();
-    string pemKey = "-----BEGIN CERTIFICATE REQUEST-----\r\n" +
-                    Convert.ToBase64String(csr) +
-                    "\r\n-----END CERTIFICATE REQUEST-----";
-
-    return pemKey;
-}
-
-string? resolvedCertDir = null;
-string ResolveCertDirectory()
-{
-    if (resolvedCertDir is not null)
-    {
-        return resolvedCertDir;
-    }
-    string etcDir = "/etc/sharplet";
-    try
-    {
-        Directory.CreateDirectory(etcDir);
-        resolvedCertDir = etcDir;
-        return etcDir;
-    }
-    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-    {
-        string homeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sharplet");
-        Directory.CreateDirectory(homeDir);
-        resolvedCertDir = homeDir;
-        Console.Error.WriteLine($"{etcDir} is not writable; wrote to {homeDir} instead.");
-        Console.Error.WriteLine($"point the app there: APISERVER_CERT_LOCATION={Path.Combine(homeDir, "cert.pem")} APISERVER_KEY_LOCATION={Path.Combine(homeDir, "key.pem")}");
-        return homeDir;
-    }
-}
-
-string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(ResolveCertDirectory(), "cert.pem");
-string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(ResolveCertDirectory(), "key.pem");
-
+// The CSR tool's orchestration: config -> key + CSR generation -> delete stale CSR ->
+// create -> approve -> write the certificate out. The steps themselves live on Csr.
 KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
-IKubernetes client = new Kubernetes(config);
+Kubernetes client = new(config);
 string name = Environment.GetEnvironmentVariable("SHARPLET_NODE_NAME") ?? "sharplet";
-string x509 = GenerateCertificate(name, keyFile);
+string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(Csr.ResolveCertificateDirectory(), "cert.pem");
+string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(Csr.ResolveCertificateDirectory(), "key.pem");
+
+string x509 = Csr.GenerateCertificate(name, keyFile);
 byte[] encodedCsr = Encoding.UTF8.GetBytes(x509);
 try
 {
@@ -97,6 +19,8 @@ try
 }
 catch
 {
+    // Expected on first run: there is no CSR to delete. Any other failure (e.g. the API
+    // being unreachable) will surface when the create below is attempted.
 }
 
 V1CertificateSigningRequest request = new()
@@ -115,56 +39,17 @@ V1CertificateSigningRequest request = new()
         ExpirationSeconds = 62208000 // 720 days: max the kubelet-serving signer allows, what real kubelets request
     }
 };
-
 await client.CertificatesV1.CreateCertificateSigningRequestAsync(request);
 
-JsonSerializerOptions serializeOptions = new()
+byte[]? certificate = await Csr.ApproveCertificateAsync(client, name);
+if (certificate is null)
 {
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    WriteIndented = true
-};
-V1CertificateSigningRequest readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-JsonDocument old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
-
-// DEV SHORTCUT: the tool approves its own CSR by patching status.conditions, which only works with
-// cluster-admin. In production, a human or an approval policy approves the 'kubernetes.io/kubelet-serving'
-// CSR instead; keep this path for throwaway clusters (minikube) only.
-List<V1CertificateSigningRequestCondition> replace = new()
-{
-    new V1CertificateSigningRequestCondition
-    {
-        Status = "True",
-        Type = "Approved",
-        LastTransitionTime = DateTime.UtcNow,
-        LastUpdateTime = DateTime.UtcNow,
-        Message = "This certificate was approved by k8s client",
-        Reason = "Approve"
-    }
-};
-readCert.Status.Conditions = replace;
-
-JsonDocument expected = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
-
-JsonPatch patch = old.CreatePatch(expected);
-await client.CertificatesV1.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch),
-    name);
-await Task.Delay(2000);
-V1CertificateSigningRequest latest = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-
-if (latest.Status.Certificate is null)
-{
-    Console.Error.WriteLine($"CSR '{name}' was not signed by the cluster; nothing to write.");
+    await Console.Error.WriteLineAsync($"CSR '{name}' was not signed by the cluster; nothing to write.");
     return 1;
 }
 
-X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(latest.Status.Certificate);
-string? certDir = Path.GetDirectoryName(certFile);
-if (!string.IsNullOrEmpty(certDir))
-{
-    Directory.CreateDirectory(certDir);
-}
-File.WriteAllText(certFile, certificate.ExportCertificatePem());
+await Csr.WriteCertificateAsync(certificate, certFile);
 
-Console.WriteLine($"certificate written to {certFile}");
-Console.WriteLine($"private key written to {keyFile}");
+await Console.Out.WriteLineAsync($"certificate written to {certFile}");
+await Console.Out.WriteLineAsync($"private key written to {keyFile}");
 return 0;

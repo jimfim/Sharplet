@@ -36,7 +36,7 @@ public class PodControllerService : BackgroundService
         {
             try
             {
-                if (await timer.WaitForNextTickAsync(stoppingToken) is false)
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
                 {
                     continue;
                 }
@@ -47,62 +47,82 @@ public class PodControllerService : BackgroundService
             }
 
             // Only the leader patches pod status; followers wait for a takeover.
-            if (_leaderElection.IsLeader is false)
+            if (!_leaderElection.IsLeader)
             {
                 continue;
             }
 
-            HttpOperationResponse<V1PodList> apiPods;
             try
             {
-                // Only patch pods scheduled onto this node: the scheduler sets spec.nodeName,
-                // so a field selector keeps pods on real nodes out of the patch loop.
-                apiPods =
-                    await _kubernetes.CoreV1.ListNamespacedPodWithHttpMessagesAsync(_podNamespace,
-                        fieldSelector: $"spec.nodeName={_config.NodeName}",
-                        cancellationToken: stoppingToken);
-                consecutiveFailures = 0;
+                consecutiveFailures = await UpdatePodStatusesAsync(consecutiveFailures, stoppingToken);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
-            catch (Exception exception)
+        }
+    }
+
+    // Lists the node's pods and patches each pod's status subresource from the provider.
+    // Returns the updated consecutive-failure count (0 when the list call succeeded).
+    private async Task<int> UpdatePodStatusesAsync(int consecutiveFailures, CancellationToken cancellationToken)
+    {
+        HttpOperationResponse<V1PodList> apiPods;
+        try
+        {
+            // Only patch pods scheduled onto this node: the scheduler sets spec.nodeName,
+            // so a field selector keeps pods on real nodes out of the patch loop.
+            apiPods =
+                await _kubernetes.CoreV1.ListNamespacedPodWithHttpMessagesAsync(_podNamespace,
+                    fieldSelector: $"spec.nodeName={_config.NodeName}",
+                    cancellationToken: cancellationToken);
+            consecutiveFailures = 0;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            consecutiveFailures++;
+            _logger.LogError(exception, "pod list failed; retrying after backoff ({ConsecutiveFailures} consecutive failures)", consecutiveFailures);
+            await Task.Delay(GetBackoff(consecutiveFailures), cancellationToken);
+            return consecutiveFailures;
+        }
+
+        foreach (V1Pod pod in apiPods.Body.Items)
+        {
+            await PatchPodStatusAsync(pod, cancellationToken);
+        }
+        return consecutiveFailures;
+    }
+
+    private async Task PatchPodStatusAsync(V1Pod pod, CancellationToken cancellationToken)
+    {
+        try
+        {
+            V1PodStatus? status = await _podController.GetPodStatusAsync(pod.Namespace(), pod.Name(), cancellationToken);
+            if (status is null)
             {
-                consecutiveFailures++;
-                _logger.LogError(exception, "pod list failed; retrying after backoff ({ConsecutiveFailures} consecutive failures)", consecutiveFailures);
-                await Task.Delay(GetBackoff(consecutiveFailures), stoppingToken);
-                continue;
+                return;
             }
 
-            foreach (V1Pod pod in apiPods.Body.Items)
-            {
-                try
-                {
-                    V1PodStatus? status = await _podController.GetPodStatusAsync(pod.Namespace(), pod.Name(), stoppingToken);
-                    if (status is null)
-                    {
-                        continue;
-                    }
-
-                    _logger.LogInformation("tracker updating pod {PodName}", pod.Name());
-                    // Patch the pods/status subresource from the provider's status; the API
-                    // server applies only the status portion of the merge patch.
-                    pod.Status = status;
-                    await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
-                        new V1Patch(pod, V1Patch.PatchType.MergePatch), pod.Name(), pod.Namespace(),
-                        cancellationToken: stoppingToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    // One bad pod must not block the rest: log it and keep patching.
-                    _logger.LogWarning(exception, "failed to update status for pod {Namespace}/{PodName}", pod.Namespace(), pod.Name());
-                }
-            }
+            _logger.LogInformation("tracker updating pod {PodName}", pod.Name());
+            // Patch the pods/status subresource from the provider's status; the API
+            // server applies only the status portion of the merge patch.
+            pod.Status = status;
+            await _kubernetes.CoreV1.PatchNamespacedPodStatusAsync(
+                new V1Patch(pod, V1Patch.PatchType.MergePatch), pod.Name(), pod.Namespace(),
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // One bad pod must not block the rest: log it and keep patching.
+            _logger.LogWarning(exception, "failed to update status for pod {Namespace}/{PodName}", pod.Namespace(), pod.Name());
         }
     }
 
