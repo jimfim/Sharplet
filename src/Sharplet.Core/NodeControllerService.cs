@@ -35,7 +35,7 @@ public class NodeControllerService : BackgroundService
         {
             try
             {
-                if (await timer.WaitForNextTickAsync(stoppingToken) is false)
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
                 {
                     continue;
                 }
@@ -47,7 +47,7 @@ public class NodeControllerService : BackgroundService
 
             // Only the leader holds the node lease and writes node status; followers skip
             // the tick and pick up work when they win the election.
-            if (_leaderElection.IsLeader is false)
+            if (!_leaderElection.IsLeader)
             {
                 continue;
             }
