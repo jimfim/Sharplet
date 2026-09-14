@@ -153,7 +153,7 @@ V1CertificateSigningRequest latest = await client.CertificatesV1.ReadCertificate
 
 if (latest.Status.Certificate is null)
 {
-    Console.Error.WriteLine($"CSR '{name}' was not signed by the cluster; nothing to write.");
+    await Console.Error.WriteLineAsync($"CSR '{name}' was not signed by the cluster; nothing to write.");
     return 1;
 }
 
@@ -163,7 +163,7 @@ if (!string.IsNullOrEmpty(certDir))
 {
     Directory.CreateDirectory(certDir);
 }
-File.WriteAllText(certFile, certificate.ExportCertificatePem());
+await File.WriteAllTextAsync(certFile, certificate.ExportCertificatePem());
 
 Console.WriteLine($"certificate written to {certFile}");
 Console.WriteLine($"private key written to {keyFile}");
