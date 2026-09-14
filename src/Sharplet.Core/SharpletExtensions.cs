@@ -150,7 +150,7 @@ public static class SharpletExtensions
             {
                 string certPath = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? "/etc/sharplet/cert.pem";
                 string keyPath = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? "/etc/sharplet/key.pem";
-                if (File.Exists(certPath) is false || File.Exists(keyPath) is false)
+                if (!File.Exists(certPath) || !File.Exists(keyPath))
                 {
                     // Local-debug fallback: the CSR tool writes to ~/.sharplet when /etc/sharplet is not writable.
                     string homeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sharplet");
@@ -194,7 +194,7 @@ public static class SharpletExtensions
             typeof(INodeController),
         };
         List<Type> missing = candidates
-            .Where(serviceType => collection.Services.Any(descriptor => descriptor.ServiceType == serviceType) is false)
+            .Where(serviceType => !collection.Services.Any(descriptor => descriptor.ServiceType == serviceType))
             .ToList();
         if (missing.Count > 0)
         {

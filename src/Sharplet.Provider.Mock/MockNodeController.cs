@@ -164,7 +164,7 @@ public class MockNodeController : INodeController
                 Environment.GetEnvironmentVariable("VKUBELET_POD_IP"),
                 Environment.GetEnvironmentVariable("POD_IP"))
             ?? "127.0.0.1";
-        if (localIp is "127.0.0.1" && _loopbackWarned is false)
+        if (localIp == "127.0.0.1" && !_loopbackWarned)
         {
             _loopbackWarned = true;
             _logger.LogWarning(
@@ -179,7 +179,7 @@ public class MockNodeController : INodeController
     {
         foreach (string? value in values)
         {
-            if (string.IsNullOrWhiteSpace(value) is false)
+            if (!string.IsNullOrWhiteSpace(value))
             {
                 return value;
             }
