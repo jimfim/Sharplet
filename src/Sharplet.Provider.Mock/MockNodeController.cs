@@ -175,16 +175,6 @@ public class MockNodeController : INodeController
         return localIp;
     }
 
-    private static string? FirstNonBlank(params string?[] values)
-    {
-        foreach (string? value in values)
-        {
-            if (string.IsNullOrWhiteSpace(value) is false)
-            {
-                return value;
-            }
-        }
-
-        return null;
-    }
+    private static string? FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }
