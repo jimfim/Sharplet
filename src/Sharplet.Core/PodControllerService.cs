@@ -36,7 +36,7 @@ public class PodControllerService : BackgroundService
         {
             try
             {
-                if (await timer.WaitForNextTickAsync(stoppingToken) is false)
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
                 {
                     continue;
                 }
@@ -47,7 +47,7 @@ public class PodControllerService : BackgroundService
             }
 
             // Only the leader patches pod status; followers wait for a takeover.
-            if (_leaderElection.IsLeader is false)
+            if (!_leaderElection.IsLeader)
             {
                 continue;
             }
