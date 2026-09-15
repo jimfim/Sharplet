@@ -1,7 +1,7 @@
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Xunit;
 
@@ -13,6 +13,7 @@ public class EventWatcherTests
     private readonly List<V1Pod> _createdPods = new();
     private readonly List<V1Pod> _updatedPods = new();
     private readonly List<V1Pod> _deletedPods = new();
+    private readonly RecordingLogger<EventWatcher> _logger = new();
     private readonly IPodController _podController;
     private readonly EventWatcher _watcher;
 
@@ -35,7 +36,7 @@ public class EventWatcherTests
         _podController.DeletePodAsync(Arg.Do<V1Pod>(p => _deletedPods.Add(p)), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        _watcher = new EventWatcher(NullLogger<EventWatcher>.Instance, kubernetes, _podController,
+        _watcher = new EventWatcher(_logger, kubernetes, _podController,
             new SharpConfig { NodeName = "sharplet" });
     }
 
@@ -90,6 +91,10 @@ public class EventWatcherTests
         Assert.Empty(_deletedPods);
         Corev1Event only = Assert.Single(_emittedEvents);
         Assert.Equal("Started", only.Reason);
+        // The status-only churn filter is observable in the debug log: the event was
+        // recognized and deliberately ignored.
+        Assert.Contains(_logger.Entries, entry => entry.Level == LogLevel.Debug
+            && entry.Message.Contains("status-only change"));
     }
 
     [Fact]
@@ -131,6 +136,9 @@ public class EventWatcherTests
 
         Assert.Single(_createdPods);
         Assert.Single(_emittedEvents);
+        // Re-listed pods are recognized as already tracked and logged at debug level.
+        Assert.Contains(_logger.Entries, entry => entry.Level == LogLevel.Debug
+            && entry.Message.Contains("already tracked"));
     }
 
     [Fact]
@@ -209,7 +217,7 @@ public class EventWatcherTests
         kubernetes.CoreV1.Returns(coreV1);
 
         IPodController podController = Substitute.For<IPodController>();
-        EventWatcher watcher = new EventWatcher(NullLogger<EventWatcher>.Instance, kubernetes, podController,
+        EventWatcher watcher = new EventWatcher(new RecordingLogger<EventWatcher>(), kubernetes, podController,
             new SharpConfig { NodeName = "sharplet" });
 
         await watcher.WatchEventStream();
@@ -239,9 +247,21 @@ public class EventWatcherTests
 
         IPodController podController = Substitute.For<IPodController>();
         podController.CreatePodAsync(Arg.Any<V1Pod>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        EventWatcher watcher = new EventWatcher(NullLogger<EventWatcher>.Instance, kubernetes, podController,
+        EventWatcher watcher = new EventWatcher(new RecordingLogger<EventWatcher>(), kubernetes, podController,
             new SharpConfig { NodeName = "sharplet" });
 
         await Assert.ThrowsAnyAsync<Exception>(() => watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod()));
+    }
+
+    [Fact]
+    public async Task UnknownEventType_ThrowsArgumentOutOfRange()
+    {
+        // Watch events outside the known kinds (Added/Modified/Deleted/Error/Bookmark) are
+        // a client error: fail loudly instead of silently dropping the event.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => _watcher.HandlePodEventAsync((WatchEventType)999, CreatePod()));
+        Assert.Empty(_createdPods);
+        Assert.Empty(_updatedPods);
+        Assert.Empty(_deletedPods);
     }
 }

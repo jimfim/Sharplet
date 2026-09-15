@@ -227,4 +227,57 @@ public class NodeControllerServiceTests
             Arg.Any<string>(), Arg.Any<CancellationToken>());
         Assert.False(fixture.Leader.IsLeader);
     }
+
+    [Fact]
+    public async Task ReadCanceled_StopsTheService()
+    {
+        // A cancellation surfaced from the API call (the host is shutting down) must stop
+        // the status loop: no further ticks, no provider calls.
+        MockCluster cluster = MockCluster.CreateLeader();
+        List<string> reads = new();
+        cluster.CoreV1.ReadNodeWithHttpMessagesAsync(
+                Arg.Do<string>(name => reads.Add(name)), Arg.Any<bool?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<HttpOperationResponse<V1Node>>(new OperationCanceledException("shutting down")));
+
+        INodeController nodeController = Substitute.For<INodeController>();
+        await using Fixture fixture = await CreateFixture(cluster, nodeController);
+
+        await TestHelper.WaitUntilAsync(() => fixture.Leader.IsLeader);
+        await TestHelper.WaitUntilAsync(() => reads.Count > 0);
+        await Task.Delay(1500, TestContext.Current.CancellationToken);
+        // The loop stopped after the cancelled read: the next tick (1s) never ran.
+        Assert.Single(reads);
+        await nodeController.DidNotReceive().GetNodeStatusAsync(NodeName, Arg.Any<CancellationToken>());
+        await nodeController.DidNotReceive().CreateNodeAsync(Arg.Any<V1Node>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RecreateCanceled_StopsTheService()
+    {
+        // Node object missing and the provider's recreation cancelled mid-flight: the
+        // cancellation propagates out of the status update and stops the loop.
+        MockCluster cluster = MockCluster.CreateLeader();
+        cluster.CoreV1.ReadNodeWithHttpMessagesAsync(
+                Arg.Any<string>(), Arg.Any<bool?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<HttpOperationResponse<V1Node>>(
+                TestHelper.ApiException(HttpStatusCode.NotFound, "node not found")));
+
+        List<V1Node> recreateCalls = new();
+        INodeController nodeController = Substitute.For<INodeController>();
+        nodeController.CreateNodeAsync(Arg.Do<V1Node>(node => recreateCalls.Add(node)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new OperationCanceledException("shutting down")));
+
+        await using Fixture fixture = await CreateFixture(cluster, nodeController);
+
+        await TestHelper.WaitUntilAsync(() => fixture.Leader.IsLeader);
+        await TestHelper.WaitUntilAsync(() => recreateCalls.Count > 0);
+        await Task.Delay(1500, TestContext.Current.CancellationToken);
+        Assert.Single(recreateCalls);
+        await cluster.CoreV1.DidNotReceive().PatchNodeStatusWithHttpMessagesAsync(
+            Arg.Any<V1Patch>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool?>(), Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(),
+            Arg.Any<CancellationToken>());
+    }
 }

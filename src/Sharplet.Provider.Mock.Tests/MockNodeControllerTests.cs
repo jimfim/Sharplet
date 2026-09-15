@@ -69,13 +69,18 @@ public class MockNodeControllerTests
                 Arg.Any<V1Node>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
                 Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<HttpOperationResponse<V1Node>>(HttpError(HttpStatusCode.Conflict)));
-        MockNodeController controller = new(NullLogger<MockNodeController>.Instance, kubernetes);
+        CapturingLogger<MockNodeController> logger = new();
+        MockNodeController controller = new(logger, kubernetes);
 
         await controller.CreateNodeAsync(new V1Node(), CancellationToken.None);
 
         await kubernetes.CoreV1.Received(1).CreateNodeWithHttpMessagesAsync(
             Arg.Any<V1Node>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>());
+        // The swallowed conflict is observable in the log: operators restart the kubelet
+        // regularly and should see why the node was not recreated.
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Information
+            && entry.Message.Contains("already exists"));
     }
 
     [Fact]
@@ -161,37 +166,27 @@ public class MockNodeControllerTests
         Assert.Equal("10.0.0.5", status.Addresses.First(address => address.Type == "InternalIP").Address);
     }
 
+    [Fact]
+    public async Task GetNodeStatusAsync_WithBlankPodIp_ReportsLoopbackAndWarnsOnce()
+    {
+        // Blank (not just unset) VKUBELET_POD_IP/POD_IP are treated as absent: the node
+        // falls back to loopback and the process warns once.
+        using EnvVariables env = EnvVariables.Scope(kubeletIp: "", podIp: "");
+        CapturingLogger<MockNodeController> logger = new();
+        IKubernetes kubernetes = Substitute.For<IKubernetes>();
+        MockNodeController controller = new(logger, kubernetes);
+
+        V1NodeStatus first = await controller.GetNodeStatusAsync("test-node", CancellationToken.None);
+        await controller.GetNodeStatusAsync("test-node", CancellationToken.None);
+
+        Assert.Equal("127.0.0.1", first.Addresses.First(address => address.Type == "InternalIP").Address);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
     private static HttpOperationException HttpError(HttpStatusCode statusCode)
     {
         HttpOperationException error = new("api error");
         error.Response = new HttpResponseMessageWrapper(new HttpResponseMessage(statusCode), string.Empty);
         return error;
-    }
-
-    /// <summary>Captures every log entry written to it so tests can assert on what the provider logged.</summary>
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public sealed record Entry(LogLevel Level, string Message);
-
-        public List<Entry> Entries { get; } = new();
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            Entries.Add(new Entry(logLevel, formatter(state, exception)));
-        }
-
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
-
-            public void Dispose()
-            {
-            }
-        }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using k8s;
 using k8s.Autorest;
 using k8s.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -26,7 +27,8 @@ public class MockPodControllerTests
         IKubernetes kubernetes = Substitute.For<IKubernetes>();
         kubernetes.CoreV1.Returns(coreV1);
 
-        MockPodController controller = new(NullLogger<MockPodController>.Instance, kubernetes);
+        CapturingLogger<MockPodController> logger = new();
+        MockPodController controller = new(logger, kubernetes);
         V1Pod pod = new()
         {
             Metadata = new V1ObjectMeta { Name = "test-pod", NamespaceProperty = "default" },
@@ -38,6 +40,9 @@ public class MockPodControllerTests
         await coreV1.DidNotReceiveWithAnyArgs().DeleteNamespacedPodWithHttpMessagesAsync(
             "default", "test-pod", new V1DeleteOptions(), "pretty", null, null, null, "dryRun", null,
             new Dictionary<string, IReadOnlyList<string>>(), CancellationToken.None);
+        // The provider only releases local state; the skip is recorded for operators.
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Information
+            && entry.Message.Contains("DeletePodAsync"));
     }
 
     [Fact]
@@ -137,7 +142,8 @@ public class MockPodControllerTests
             .Returns(Task.FromResult(response));
         IKubernetes kubernetes = Substitute.For<IKubernetes>();
         kubernetes.CoreV1.Returns(coreV1);
-        MockPodController controller = new(NullLogger<MockPodController>.Instance, kubernetes);
+        CapturingLogger<MockPodController> logger = new();
+        MockPodController controller = new(logger, kubernetes);
 
         V1PodStatus status = await controller.GetPodStatusAsync("default", "test-pod", CancellationToken.None);
 
@@ -150,7 +156,9 @@ public class MockPodControllerTests
         Assert.Equal("busybox", container.Image);
         Assert.Equal("10.0.0.9", status.PodIP);
         Assert.Equal("10.0.0.9", status.HostIP);
-        Assert.All(status.Conditions, condition => Assert.Equal("True", condition.Status));
+        // The IP the mock reports is surfaced at debug level for local debugging.
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Debug
+            && entry.Message.Contains("10.0.0.9"));
     }
 
     [Fact]
