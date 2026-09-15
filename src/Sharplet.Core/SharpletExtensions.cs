@@ -178,15 +178,13 @@ public static class SharpletExtensions
     private static void AddVirtualKubeletServices(this WebApplicationBuilder collection,
         SharpConfig configuration, Action<IServiceCollection>? configureProvider)
     {
-        KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
-            ? KubernetesClientConfiguration.InClusterConfig()
-            : KubernetesClientConfiguration.BuildConfigFromConfigFile();
-        collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(kubernetesConfig));
         // Consumer registration point: pass a callback to register the pod/node provider
         // (implement IPodController / INodeController plus any supporting services).
         configureProvider?.Invoke(collection.Services);
         // A virtual kubelet cannot run without a provider. Fail fast at construction time with an
-        // actionable message instead of a null reference deep inside the status services.
+        // actionable message instead of a null reference deep inside the status services. Validated
+        // before the kubernetes client configuration so the contract holds on machines without
+        // any kubeconfig at all.
         List<Type> candidates = new()
         {
             typeof(IPodController),
@@ -202,6 +200,11 @@ public static class SharpletExtensions
                 "Implement the interface(s) and register them via the configureProvider callback of AddVirtualKubelet " +
                 "(Sharplet.Provider.Mock is the reference layout; see Sharplet.Samplekubelet's Program.cs)");
         }
+
+        KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
+            ? KubernetesClientConfiguration.InClusterConfig()
+            : KubernetesClientConfiguration.BuildConfigFromConfigFile();
+        collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(kubernetesConfig));
 
         // Registered explicitly (not via AddHostedService<T>) because the web host builder
         // only records the IHostedService alias: the concrete type must be resolvable so the
