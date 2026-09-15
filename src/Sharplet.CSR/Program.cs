@@ -5,7 +5,8 @@ using k8s.Models;
 
 // The CSR tool's orchestration: config -> key + CSR generation -> delete stale CSR ->
 // create -> approve -> write the certificate out. The steps themselves live on Csr.
-KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+// BuildDefaultConfig honors the KUBECONFIG override, then ~/.kube/config (BuildConfigFromConfigFile ignores it).
+KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildDefaultConfig();
 Kubernetes client = new(config);
 string name = Environment.GetEnvironmentVariable("SHARPLET_NODE_NAME") ?? "sharplet";
 string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(Csr.ResolveCertificateDirectory(), "cert.pem");

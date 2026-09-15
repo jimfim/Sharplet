@@ -201,9 +201,12 @@ public static class SharpletExtensions
                 "(Sharplet.Provider.Mock is the reference layout; see Sharplet.Samplekubelet's Program.cs)");
         }
 
+        // In-cluster is the production path (the kubelet's service account). Outside a cluster
+        // BuildDefaultConfig resolves the standard KUBECONFIG override, then ~/.kube/config
+        // (BuildConfigFromConfigFile would ignore KUBECONFIG entirely).
         KubernetesClientConfiguration kubernetesConfig = KubernetesClientConfiguration.IsInCluster()
             ? KubernetesClientConfiguration.InClusterConfig()
-            : KubernetesClientConfiguration.BuildConfigFromConfigFile();
+            : KubernetesClientConfiguration.BuildDefaultConfig();
         collection.Services.AddSingleton<IKubernetes>(_ => new Kubernetes(kubernetesConfig));
 
         // Registered explicitly (not via AddHostedService<T>) because the web host builder
