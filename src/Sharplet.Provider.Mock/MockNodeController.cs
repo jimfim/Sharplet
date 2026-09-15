@@ -114,7 +114,10 @@ public class MockNodeController : INodeController
             {
                 // The node object outlives the process (ttl annotation "0"), so a conflict on
                 // create is the expected path on every restart: keep the existing object.
-                _logger.LogInformation("node {NodeName} already exists; keeping the existing object", node.Name());
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.LogInformation(e, "node {NodeName} already exists; keeping the existing object", node.Name());
+                }
                 return;
             }
 

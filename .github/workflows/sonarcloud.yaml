@@ -49,7 +49,7 @@ jobs:
         run: |
           # Host entry points are excluded from coverage: the CSR tool and the Samplekubelet host
           # bootstrap need a running cluster and cannot be meaningfully unit tested.
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml" /d:sonar.coverage.exclusions="src/Sharplet.CSR/**;src/Sharplet.Samplekubelet/Program.cs"
+          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="$env:SONAR_TOKEN" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml" /d:sonar.coverage.exclusions="src/Sharplet.CSR/**;src/Sharplet.Samplekubelet/Program.cs"
           dotnet build src
           # The xunit.v3 (Microsoft.Testing.Platform) test projects are self-executing
           # apps: `dotnet test` exits without running them, so invoke the built test
@@ -65,7 +65,7 @@ jobs:
               if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
           if ($failed) { exit 1 }
-          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"
       # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
       # quality gate; this step polls the gate status from the scan report and
       # fails the workflow when the gate is red
