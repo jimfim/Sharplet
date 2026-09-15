@@ -11,38 +11,72 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6  # v6
         with:
           java-version: 17
           distribution: 'zulu' # Alternative distribution options are available.
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
+        with:
+          dotnet-version: 10.x
       - name: Cache SonarCloud packages
-        uses: actions/cache@v3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: ~\sonar\cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
-      - name: Cache SonarCloud scanner
+      - name: Cache SonarCloud tooling
         id: cache-sonar-scanner
-        uses: actions/cache@v3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
-          path: .\.sonar\scanner
+          path: .\.sonar
           key: ${{ runner.os }}-sonar-scanner
           restore-keys: ${{ runner.os }}-sonar-scanner
-      - name: Install SonarCloud scanner
+      - name: Install SonarCloud scanner and coverage tooling
         if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
         shell: powershell
         run: |
-          New-Item -Path .\.sonar\scanner -ItemType Directory
           dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
+          dotnet tool update dotnet-coverage --tool-path .\.sonar\tools --version 18.11.2
       - name: Build and analyze
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         shell: powershell
         run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
+          # Host entry points are excluded from coverage: the CSR tool and the Samplekubelet host
+          # bootstrap need a running cluster and cannot be meaningfully unit tested.
+          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="$env:SONAR_TOKEN" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml" /d:sonar.coverage.exclusions="src/Sharplet.CSR/**;src/Sharplet.Samplekubelet/Program.cs"
           dotnet build src
-          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+          # The xunit.v3 (Microsoft.Testing.Platform) test projects are self-executing
+          # apps: `dotnet test` exits without running them, so invoke the built test
+          # assemblies directly. The scanner for .NET does not instrument the build or
+          # collect coverage in-process, so wrap each run in dotnet-coverage to produce
+          # the VS Code Coverage XML report the scanner imports via
+          # sonar.cs.vscoveragexml.reportsPaths (see the quality-gate "new coverage"
+          # condition). dotnet-coverage returns the test run's exit code, so a failing
+          # test fails the workflow.
+          $failed = $false
+          Get-ChildItem src -Directory | Where-Object { $_.Name -like "*.Tests" } | ForEach-Object {
+              .\.sonar\tools\dotnet-coverage collect "dotnet src/$($_.Name)/bin/Debug/net10.0/$($_.Name).dll" -f xml -o "coverage-$($_.Name).xml"
+              if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"
+      # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
+      # quality gate; this step polls the gate status from the scan report.
+      # continue-on-error keeps the gate informational: a red gate shows as a
+      # failed step but never fails the workflow, so only the CI build check
+      # (required status check) can block a merge.
+      - name: SonarCloud quality gate check
+        uses: sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa  # master
+        continue-on-error: true
+        with:
+          pollingTimeoutSec: 600
+          scanMetadataReportFile: .\.sonarqube\out\.sonar\report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io

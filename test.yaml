@@ -14,12 +14,12 @@ spec:
       labels:
         run: nginx
       annotations:
-        sidecar.istio.io/inject: “false”
+        sidecar.istio.io/inject: "false"
     spec:
       containers:
       - image: us-docker.pkg.dev/cloudrun/container/hello:latest
         imagePullPolicy: Always
-        name: nginx
+        name: hello
         ports:
         - containerPort: 8080
         resources:

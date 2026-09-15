@@ -32,10 +32,15 @@ public class MockPodController : IPodController
         
     }
 
-    public async Task DeletePodAsync(V1Pod pod, CancellationToken cancellationToken = default)
+    public Task DeletePodAsync(V1Pod pod, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("DeletePodAsync");
-        await _kubernetes.CoreV1.DeleteNamespacedPodAsync(pod.Name(), pod.Namespace(), cancellationToken: cancellationToken);
+        // the pod object was already deleted by the user/controller; a provider only releases its local
+        // state. Deleting the API object here would 404 and crash the kubelet.
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("DeletePodAsync {PodName}", pod.Name());
+        }
+        return Task.CompletedTask;
     }
 
     public async Task<V1Pod?> GetPodAsync(string @namespace, string name, CancellationToken cancellationToken = default)
@@ -49,13 +54,8 @@ public class MockPodController : IPodController
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GetPodStatusAsync");
-        var podAsync = await _kubernetes.CoreV1.ReadNamespacedPodWithHttpMessagesAsync(name,@namespace, cancellationToken: cancellationToken);
-        
-        if (podAsync == null)
-        {
-            return null;
-        }
-        
+        var podAsync = await _kubernetes.CoreV1.ReadNamespacedPodWithHttpMessagesAsync(name, @namespace, cancellationToken: cancellationToken);
+
         var containerStatusList = podAsync.Body.Spec.Containers.Select(container => new V1ContainerStatus
             {
                 Image = container.Image,
@@ -63,11 +63,14 @@ public class MockPodController : IPodController
                 Ready = true,
                 RestartCount = 1,
                 Started = true,
-                State = new V1ContainerState(new V1ContainerStateRunning(DateTime.Now))
+                State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = DateTime.Now } }
             })
             .ToList();
-        var localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP");
-        Console.WriteLine($"setting pod ip to: {localIp}");
+        string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("setting pod ip to {PodIp}", localIp);
+        }
         var status = new V1PodStatus
         {
             Phase = "Running",
@@ -75,12 +78,12 @@ public class MockPodController : IPodController
             HostIP = localIp,
             HostIPs = new List<V1HostIP>
             {
-                new(localIp)
+                new V1HostIP { Ip = localIp }
             },
             PodIP = localIp,
             PodIPs = new List<V1PodIP>
             {
-                new(localIp)
+                new V1PodIP { Ip = localIp }
             },
             Conditions = new List<V1PodCondition>
             {

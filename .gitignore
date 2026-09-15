@@ -133,3 +133,11 @@ $RECYCLE.BIN/
 _NCrunch*
 .idea
 values.local.yaml
+
+# SonarScanner for .NET tooling, scan output, and coverage reports
+.sonar/
+.sonarqube/
+coverage-*.xml
+
+# Local git worktrees (in-flight feature/agent work)
+.worktrees/

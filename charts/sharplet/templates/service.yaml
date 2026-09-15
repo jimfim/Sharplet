@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "dotnet-kubelet.fullname" . }}
+  name: {{ include "sharplet.fullname" . }}
   labels:
-    {{- include "dotnet-kubelet.labels" . | nindent 4 }}
+    {{- include "sharplet.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -11,5 +11,10 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    # the read-only kubelet API (plain HTTP, no client cert): probes and poking
+    - port: 10255
+      targetPort: readonly
+      protocol: TCP
+      name: readonly
   selector:
-    {{- include "dotnet-kubelet.selectorLabels" . | nindent 4 }}
+    {{- include "sharplet.selectorLabels" . | nindent 4 }}
