@@ -1,5 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using k8s;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,10 +15,11 @@ namespace Sharplet.Core.Tests;
 /// <summary>
 /// <c>AddVirtualKubelet</c> wires Kestrel onto the kubelet's real listeners: 10255 (read-only
 /// HTTP: livez/readyz/healthz, pods, stats) and 10250 (HTTPS, what the API server dials for
-/// pod logs and exec; client certificates are accepted but not required). These tests start
-/// the app for real and probe both listeners, including the ~/.sharplet certificate fallback
-/// used for local debugging. The embedded certificate is a throwaway self-signed pair (CN
-/// sharplet-test, valid to 2126) — never use it outside tests.
+/// pod logs and exec; a client certificate is required and, when a client CA is configured,
+/// verified against it). These tests start the app for real and probe both listeners,
+/// including the ~/.sharplet certificate fallback used for local debugging. The embedded
+/// certificate is a throwaway self-signed pair (CN sharplet-test, valid to 2126) — never
+/// use it outside tests.
 /// </summary>
 public class KubeletListenerTests
 {
@@ -96,20 +99,24 @@ public class KubeletListenerTests
 
             // 10255: plain HTTP, no client certificate required.
             _httpClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:10255") };
-            HttpResponseMessage livez = await _httpClient.GetAsync("/livez");
+            HttpResponseMessage livez = await _httpClient.GetAsync("/livez", TestContext.Current.CancellationToken);
             Assert.Equal(200, (int)livez.StatusCode);
-            Assert.Equal("\"alive\"", await livez.Content.ReadAsStringAsync());
+            Assert.Equal("\"alive\"", await livez.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-            // 10250: HTTPS. Client certificates are accepted but not required, so a plain
-            // (trust-all) client proves the TLS listener serves the kubelet endpoints.
-            _httpsClient = CreateTrustAllHttpsClient();
-            HttpResponseMessage httpsLivez = await _httpsClient.GetAsync("/livez");
+            // 10250: HTTPS, client certificate required. No client CA is configured here, so
+            // any certificate is accepted - but an anonymous caller is rejected at the TLS layer.
+            HttpClient anonymous = CreateHttpsClient(null);
+            await Assert.ThrowsAsync<HttpRequestException>(() => anonymous.GetAsync("/livez", TestContext.Current.CancellationToken));
+            anonymous.Dispose();
+
+            _httpsClient = CreateHttpsClient(CreateSelfSignedClientCertificate());
+            HttpResponseMessage httpsLivez = await _httpsClient.GetAsync("/livez", TestContext.Current.CancellationToken);
             Assert.Equal(200, (int)httpsLivez.StatusCode);
-            Assert.Equal("\"alive\"", await httpsLivez.Content.ReadAsStringAsync());
+            Assert.Equal("\"alive\"", await httpsLivez.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-            HttpResponseMessage readyz = await _httpsClient.GetAsync("/readyz");
+            HttpResponseMessage readyz = await _httpsClient.GetAsync("/readyz", TestContext.Current.CancellationToken);
             Assert.Equal(200, (int)readyz.StatusCode);
-            Assert.Equal("\"ready\"", await readyz.Content.ReadAsStringAsync());
+            Assert.Equal("\"ready\"", await readyz.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -141,20 +148,60 @@ public class KubeletListenerTests
             await StartKubeletApp();
 
             _httpClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:10255") };
-            HttpResponseMessage livez = await _httpClient.GetAsync("/livez");
+            HttpResponseMessage livez = await _httpClient.GetAsync("/livez", TestContext.Current.CancellationToken);
             Assert.Equal(200, (int)livez.StatusCode);
-            Assert.Equal("\"alive\"", await livez.Content.ReadAsStringAsync());
+            Assert.Equal("\"alive\"", await livez.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-            _httpsClient = CreateTrustAllHttpsClient();
-            HttpResponseMessage httpsLivez = await _httpsClient.GetAsync("/livez");
+            _httpsClient = CreateHttpsClient(CreateSelfSignedClientCertificate());
+            HttpResponseMessage httpsLivez = await _httpsClient.GetAsync("/livez", TestContext.Current.CancellationToken);
             Assert.Equal(200, (int)httpsLivez.StatusCode);
-            Assert.Equal("\"alive\"", await httpsLivez.Content.ReadAsStringAsync());
+            Assert.Equal("\"alive\"", await httpsLivez.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
         finally
         {
             Environment.SetEnvironmentVariable("HOME", previousHome);
             Environment.SetEnvironmentVariable("APISERVER_CERT_LOCATION", previousCert);
             Environment.SetEnvironmentVariable("APISERVER_KEY_LOCATION", previousKey);
+            await DisposeKubeletApp();
+        }
+    }
+
+    [Fact]
+    public async Task Kestrel_ValidatesClientCertificates_WhenClientCaIsConfigured()
+    {
+        RequireKubeletPortsFree();
+        _tempDir = NewTempDir();
+        WriteServerCertificates(Path.Combine(_tempDir, "cert.pem"), Path.Combine(_tempDir, "key.pem"));
+
+        // A client CA with one certificate signed by it (must be accepted) and one self-signed
+        // stranger (must be rejected at the TLS layer).
+        X509Certificate2 clientCa = CreateCertificateAuthority();
+        string caPath = Path.Combine(_tempDir, "ca.pem");
+        System.IO.File.WriteAllText(caPath, clientCa.ExportCertificatePem());
+        X509Certificate2 trustedClient = CreateClientCertificate(clientCa);
+        X509Certificate2 untrustedClient = CreateSelfSignedClientCertificate();
+
+        string? previousCert = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION");
+        string? previousKey = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION");
+        string? previousCa = Environment.GetEnvironmentVariable("SHARPLET_CLIENT_CA");
+        Environment.SetEnvironmentVariable("APISERVER_CERT_LOCATION", Path.Combine(_tempDir, "cert.pem"));
+        Environment.SetEnvironmentVariable("APISERVER_KEY_LOCATION", Path.Combine(_tempDir, "key.pem"));
+        Environment.SetEnvironmentVariable("SHARPLET_CLIENT_CA", caPath);
+        try
+        {
+            await StartKubeletApp();
+
+            HttpResponseMessage trusted = await CreateHttpsClient(trustedClient).GetAsync("/livez", TestContext.Current.CancellationToken);
+            Assert.Equal(200, (int)trusted.StatusCode);
+
+            HttpClient untrusted = CreateHttpsClient(untrustedClient);
+            await Assert.ThrowsAsync<HttpRequestException>(() => untrusted.GetAsync("/livez", TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APISERVER_CERT_LOCATION", previousCert);
+            Environment.SetEnvironmentVariable("APISERVER_KEY_LOCATION", previousKey);
+            Environment.SetEnvironmentVariable("SHARPLET_CLIENT_CA", previousCa);
             await DisposeKubeletApp();
         }
     }
@@ -247,14 +294,46 @@ public class KubeletListenerTests
         System.IO.File.WriteAllText(keyPath, ServerKeyPem);
     }
 
-    private static HttpClient CreateTrustAllHttpsClient()
+    private static HttpClient CreateHttpsClient(X509Certificate2? clientCert)
     {
-        // The embedded server certificate is self-signed (CN sharplet-test); the point is
-        // that the TLS listener answers, not that its identity is validated.
+        // The embedded server certificate is self-signed (CN sharplet-test); the point is that
+        // the TLS listener enforces its client-certificate policy, not that its identity is
+        // validated.
         HttpClientHandler handler = new()
         {
             ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
         };
+        if (clientCert is not null)
+        {
+            handler.ClientCertificates.Add(clientCert);
+        }
         return new HttpClient(handler) { BaseAddress = new Uri("https://127.0.0.1:10250") };
+    }
+
+    private static X509Certificate2 CreateCertificateAuthority()
+    {
+        RSA key = RSA.Create(2048);
+        CertificateRequest request = new("CN=sharplet-test-client-ca", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));
+    }
+
+    private static X509Certificate2 CreateClientCertificate(X509Certificate2 clientCa)
+    {
+        // A client certificate signed by the test client CA. The key is re-associated from
+        // PEM because Create(issuer) returns the certificate without the request's key, and
+        // a client certificate cannot sign the TLS handshake without it. The validity stays
+        // inside the CA's ten-year validity so the serial/validity invariants hold.
+        RSA key = RSA.Create(2048);
+        CertificateRequest request = new("CN=sharplet-test-client", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        X509Certificate2 signed = request.Create(clientCa, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(9), RandomNumberGenerator.GetBytes(8));
+        return X509Certificate2.CreateFromPem(signed.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem());
+    }
+
+    private static X509Certificate2 CreateSelfSignedClientCertificate()
+    {
+        RSA key = RSA.Create(2048);
+        CertificateRequest request = new("CN=sharplet-test-standalone-client", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(10));
     }
 }
