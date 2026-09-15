@@ -186,4 +186,42 @@ public class PodControllerServiceTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         Assert.False(fixture.Leader.IsLeader);
     }
+
+    [Fact]
+    public async Task ListCanceled_StopsTheService()
+    {
+        // A cancellation surfaced from the pod list call (the host is shutting down) must
+        // stop the status loop: no further ticks, no status patches.
+        MockCluster cluster = MockCluster.CreateLeader();
+        List<string> fieldSelectors = new();
+        cluster.CoreV1.ListNamespacedPodWithHttpMessagesAsync(
+                Arg.Any<string>(), Arg.Any<bool?>(), Arg.Any<string>(), Arg.Do<string>(selector => fieldSelectors.Add(selector)),
+                Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(),
+                Arg.Any<int?>(), Arg.Any<bool?>(), Arg.Any<bool?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<HttpOperationResponse<V1PodList>>(new OperationCanceledException("shutting down")));
+
+        IPodController podController = Substitute.For<IPodController>();
+        podController.GetPodStatusAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new V1PodStatus { Phase = "Running" }));
+
+        string? previousPodNamespace = Environment.GetEnvironmentVariable("POD_NAMESPACE");
+        Environment.SetEnvironmentVariable("POD_NAMESPACE", null);
+        try
+        {
+            await using Fixture fixture = await CreateFixture(cluster, podController);
+
+            await TestHelper.WaitUntilAsync(() => fixture.Leader.IsLeader);
+            await TestHelper.WaitUntilAsync(() => fieldSelectors.Count > 0);
+            await Task.Delay(1500, TestContext.Current.CancellationToken);
+            // The loop stopped after the cancelled list: the next tick (1s) never ran.
+            Assert.Single(fieldSelectors);
+            await podController.DidNotReceive().GetPodStatusAsync(Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("POD_NAMESPACE", previousPodNamespace);
+        }
+    }
 }
