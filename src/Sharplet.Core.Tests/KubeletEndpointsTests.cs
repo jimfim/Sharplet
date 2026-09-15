@@ -51,6 +51,7 @@ public class KubeletEndpointsTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        GC.SuppressFinalize(this);
         _client.Dispose();
         await _app.StopAsync();
         await _app.DisposeAsync();
@@ -286,6 +287,7 @@ public class KubeletReadinessTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        GC.SuppressFinalize(this);
         _client.Dispose();
         await _app.StopAsync();
         await _app.DisposeAsync();
