@@ -215,6 +215,11 @@ public class EventWatcherTests
         await watcher.WatchEventStream();
 
         await TestHelper.WaitUntilAsync(() => watchFlag is true);
+        await coreV1.Received(1).ListPodForAllNamespacesWithHttpMessagesAsync(
+            Arg.Any<bool?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int?>(),
+            Arg.Any<bool?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(), Arg.Any<int?>(),
+            Arg.Is<bool?>(watch => watch == true),
+            Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
