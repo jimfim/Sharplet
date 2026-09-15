@@ -3,7 +3,6 @@ using Sharplet.Provider.Mock;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole();
-builder.Logging.AddConsole();
 builder.Configuration.SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json")
     .AddJsonFile($"appsettings.{builder.Environment}.json", optional: true, true);
