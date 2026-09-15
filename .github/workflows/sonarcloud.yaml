@@ -47,7 +47,9 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         shell: powershell
         run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml"
+          # Host entry points are excluded from coverage: the CSR tool and the Samplekubelet host
+          # bootstrap need a running cluster and cannot be meaningfully unit tested.
+          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml" /d:sonar.coverage.exclusions="src/Sharplet.CSR/**;src/Sharplet.Samplekubelet/Program.cs"
           dotnet build src
           # The xunit.v3 (Microsoft.Testing.Platform) test projects are self-executing
           # apps: `dotnet test` exits without running them, so invoke the built test
