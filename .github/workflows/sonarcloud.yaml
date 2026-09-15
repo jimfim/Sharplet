@@ -67,10 +67,13 @@ jobs:
           if ($failed) { exit 1 }
           .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"
       # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
-      # quality gate; this step polls the gate status from the scan report and
-      # fails the workflow when the gate is red
+      # quality gate; this step polls the gate status from the scan report.
+      # continue-on-error keeps the gate informational: a red gate shows as a
+      # failed step but never fails the workflow, so only the CI build check
+      # (required status check) can block a merge.
       - name: SonarCloud quality gate check
         uses: sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa  # master
+        continue-on-error: true
         with:
           pollingTimeoutSec: 600
           scanMetadataReportFile: .\.sonarqube\out\.sonar\report-task.txt

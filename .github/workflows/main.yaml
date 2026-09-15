@@ -12,8 +12,10 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # Runs on every push and pull request. Make the "build" check required on
-  # protected branches (Settings > Branches) so a failing build blocks merges.
+  # Runs on every push and pull request. Make the "CI / build" check required on
+  # protected branches (Settings > Branches > Required status checks; select
+  # "CI / build", not "SonarCloud / build") so a failing build blocks merges.
+  # The SonarCloud quality gate is informational only and never blocks merges.
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest

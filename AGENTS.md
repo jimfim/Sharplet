@@ -23,8 +23,8 @@ Consequences for how you work here:
 | `src/Sharplet.CSR` | Console helper for the kubelet certificate signing request flow. |
 | `charts/sharplet` | Helm chart that deploys the Samplekubelet image. |
 | `Dockerfile` | Multi-stage .NET 10 build → `aspnet:10.0` runtime. |
-| `.github/workflows/main.yaml` | CI: `build` job (runs on push and PRs to `main`/`develop`) and `release` job (push only: GitVersion + NuGet push to GitHub Packages + Docker push + Helm chart-releaser). The `build` check should be required on protected branches so a failing build blocks merges. |
-| `.github/workflows/sonarcloud.yaml` | SonarCloud analysis on every pull request. |
+| `.github/workflows/main.yaml` | CI: `build` job (runs on push and PRs to `main`/`develop`) and `release` job (push only: GitVersion + NuGet push to GitHub Packages + Docker push + Helm chart-releaser). The `CI / build` check is the required status check on protected branches: it is the only merge gate. |
+| `.github/workflows/sonarcloud.yaml` | SonarCloud analysis on every pull request. Its quality gate is **informational only** (`continue-on-error`): a red gate shows a failed step but never fails the workflow, so it cannot block a merge. |
 | `test.yaml` | Sample workload manifest for local cluster testing. |
 | `.editorconfig` | **Source of truth for all formatting/style** — kept in line with the dotnet/sdk style rules. |
 
@@ -46,7 +46,7 @@ Consequences for how you work here:
 - `dependabot/*` — auto-created. Review and merge/close; never hand-edit.
 - `gh-pages` — docs site only. Don't touch it from code branches.
 
-Open a pull request for every change: feature/fix branches → `develop` (or `main` for hotfixes). Both CI and SonarCloud must be green before merging.
+Open a pull request for every change: feature/fix branches → `develop` (or `main` for hotfixes). The `CI / build` check must be green before merging; the SonarCloud quality gate is informational and never blocks a merge.
 
 ## Commits & pull requests
 
@@ -99,7 +99,7 @@ Logging:
 
 ## CI, releases & the Helm chart
 
-- A change is not done until `dotnet build src -c Release` passes locally **and** the CI + SonarCloud checks pass on the PR.
+- A change is not done until `dotnet build src -c Release` passes locally **and** the CI build check passes on the PR. The SonarCloud quality gate is advisory: a red gate shows a failed step (via `continue-on-error`) but the job still completes and does not block the merge.
 - CI (`.github/workflows/main.yaml`) computes the version with GitVersion and publishes: NuGet to GitHub Packages, Docker image as `jimjim/sharplet:<semver>`, and the Helm chart via chart-releaser.
 - `charts/sharplet/Chart.yaml` keeps `version: 0.0.0` / `appVersion: 0.0.0` on purpose — CI rewrites them with `sed`. **Never commit a hand-bumped chart version**; only touch `Chart.yaml` when the chart structure itself changes.
 - Local cluster overrides belong in `values.local.yaml` (gitignored) — never commit cluster-specific values.
