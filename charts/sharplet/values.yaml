@@ -98,9 +98,10 @@ affinity: {}
 podAntiAffinity: true
 
 env:
-- name: ASPNETCORE_URLS
-  value: "http://*:10255;https://*:10250"
-- name : "APISERVER_CERT_LOCATION"
+# Serving cert/key for the 10250 TLS listener. The client CA for mutual TLS is resolved
+# automatically in-cluster (the service account CA); set SHARPLET_CLIENT_CA to a bundle
+# file to override it.
+- name: "APISERVER_CERT_LOCATION"
   value: "/etc/virtual-kubelet/cert.pem"
 - name: "APISERVER_KEY_LOCATION"
   value: "/etc/virtual-kubelet/key.pem"
