@@ -28,34 +28,41 @@ jobs:
           path: ~\sonar\cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
-      - name: Cache SonarCloud scanner
+      - name: Cache SonarCloud tooling
         id: cache-sonar-scanner
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
-          path: .\.sonar\scanner
+          path: .\.sonar
           key: ${{ runner.os }}-sonar-scanner
           restore-keys: ${{ runner.os }}-sonar-scanner
-      - name: Install SonarCloud scanner
+      - name: Install SonarCloud scanner and coverage tooling
         if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
         shell: powershell
         run: |
-          New-Item -Path .\.sonar\scanner -ItemType Directory
           dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
+          dotnet tool update dotnet-coverage --tool-path .\.sonar\tools --version 18.11.2
       - name: Build and analyze
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         shell: powershell
         run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
+          .\.sonar\scanner\dotnet-sonarscanner begin /k:"jimfim_Sharplet" /o:"jimfim" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.vscoveragexml.reportsPaths="coverage-*.xml"
           dotnet build src
           # The xunit.v3 (Microsoft.Testing.Platform) test projects are self-executing
           # apps: `dotnet test` exits without running them, so invoke the built test
-          # assemblies directly. Executing the instrumented test assemblies is what lets
-          # the scanner collect coverage for the quality-gate "new coverage" condition.
+          # assemblies directly. The scanner for .NET does not instrument the build or
+          # collect coverage in-process, so wrap each run in dotnet-coverage to produce
+          # the VS Code Coverage XML report the scanner imports via
+          # sonar.cs.vscoveragexml.reportsPaths (see the quality-gate "new coverage"
+          # condition). dotnet-coverage returns the test run's exit code, so a failing
+          # test fails the workflow.
+          $failed = $false
           Get-ChildItem src -Directory | Where-Object { $_.Name -like "*.Tests" } | ForEach-Object {
-              dotnet "src/$($_.Name)/bin/Debug/net10.0/$($_.Name).dll"
+              .\.sonar\tools\dotnet-coverage collect "dotnet src/$($_.Name)/bin/Debug/net10.0/$($_.Name).dll" -f xml -o "coverage-$($_.Name).xml"
+              if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
+          if ($failed) { exit 1 }
           .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
       # dotnet-sonarscanner 'end' exits 0 even when the analysis fails the
       # quality gate; this step polls the gate status from the scan report and
