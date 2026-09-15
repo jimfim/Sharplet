@@ -9,10 +9,10 @@ using k8s.Models;
 KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildDefaultConfig();
 Kubernetes client = new(config);
 string name = Environment.GetEnvironmentVariable("SHARPLET_NODE_NAME") ?? "sharplet";
-string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(Csr.ResolveCertificateDirectory(), "cert.pem");
-string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(Csr.ResolveCertificateDirectory(), "key.pem");
+string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(await Csr.ResolveCertificateDirectoryAsync(), "cert.pem");
+string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(await Csr.ResolveCertificateDirectoryAsync(), "key.pem");
 
-string x509 = Csr.GenerateCertificate(name, keyFile);
+string x509 = await Csr.GenerateCertificateAsync(name, keyFile);
 byte[] encodedCsr = Encoding.UTF8.GetBytes(x509);
 try
 {

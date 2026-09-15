@@ -16,7 +16,7 @@ internal static class Csr
 {
     private static string? s_resolvedCertDir;
 
-    public static string GenerateCertificate(string name, string keyFile)
+    public static async Task<string> GenerateCertificateAsync(string name, string keyFile)
     {
         SubjectAlternativeNameBuilder sanBuilder = new();
         sanBuilder.AddIpAddress(IPAddress.Loopback);
@@ -32,7 +32,7 @@ internal static class Csr
             }
             else
             {
-                Console.Error.WriteLine($"{podIp} (VKUBELET_POD_IP/POD_IP) is not a valid IP address; it will not be added to the certificate SAN");
+                await Console.Error.WriteLineAsync($"{podIp} (VKUBELET_POD_IP/POD_IP) is not a valid IP address; it will not be added to the certificate SAN");
             }
         }
         sanBuilder.AddDnsName(name);
@@ -51,7 +51,7 @@ internal static class Csr
         {
             Directory.CreateDirectory(keyDir);
         }
-        File.WriteAllText(keyFile, privateKeyPem);
+        await File.WriteAllTextAsync(keyFile, privateKeyPem);
 
         request.CertificateExtensions.Add(
             new X509KeyUsageExtension(X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature, false));
@@ -67,7 +67,7 @@ internal static class Csr
         return pemKey;
     }
 
-    public static string ResolveCertificateDirectory()
+    public static async Task<string> ResolveCertificateDirectoryAsync()
     {
         if (s_resolvedCertDir is not null)
         {
@@ -85,8 +85,8 @@ internal static class Csr
             string homeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sharplet");
             Directory.CreateDirectory(homeDir);
             s_resolvedCertDir = homeDir;
-            Console.Error.WriteLine($"{etcDir} is not writable; wrote to {homeDir} instead.");
-            Console.Error.WriteLine($"point the app there: APISERVER_CERT_LOCATION={Path.Combine(homeDir, "cert.pem")} APISERVER_KEY_LOCATION={Path.Combine(homeDir, "key.pem")}");
+            await Console.Error.WriteLineAsync($"{etcDir} is not writable; wrote to {homeDir} instead.");
+            await Console.Error.WriteLineAsync($"point the app there: APISERVER_CERT_LOCATION={Path.Combine(homeDir, "cert.pem")} APISERVER_KEY_LOCATION={Path.Combine(homeDir, "key.pem")}");
             return homeDir;
         }
     }
