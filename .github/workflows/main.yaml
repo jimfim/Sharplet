@@ -54,6 +54,31 @@ jobs:
     - name: Fetch all history for all tags and branches
       run: git fetch --prune --unshallow
 
+    - name: Tag main release commit
+      # Mainline GitVersion reports stable versions only at tagged commits, so
+      # develop-to-main merges get the next minor tag (vA.B.0 -> vA.B+1.0) and
+      # publish stable releases. Commits already carrying a version tag keep it,
+      # which keeps workflow re-runs idempotent. Direct (non-merge) pushes to
+      # main are not releases and keep prerelease versions.
+      if: github.ref == 'refs/heads/main'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if ! git rev-parse --verify -q HEAD^2 >/dev/null; then
+          echo "HEAD is not a merge commit; skipping release tagging"
+          exit 0
+        fi
+        if TAG=$(git describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null) && [ -n "$TAG" ]; then
+          echo "HEAD already tagged $TAG; reusing"
+          exit 0
+        fi
+        LAST=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo v0.1.0)
+        IFS='.' read -r MAJOR MINOR _ <<< "${LAST#v}"
+        NEXT="v${MAJOR}.$((MINOR + 1)).0"
+        git tag "$NEXT"
+        git push origin "$NEXT"
+        echo "tagged $GITHUB_SHA as $NEXT"
+
     - name: Install GitVersion
       uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
       with:
@@ -62,14 +87,6 @@ jobs:
     - name: Determine Version
       id:   gitversion # id to later be referenced
       uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
-
-    - name: Export GitVersion variables
-      # The execute step only exposes scalar outputs, so re-emit the full JSON to
-      # surface next-major-version and major to the publish steps via the job env
-      run: |
-        dotnet-gitversion /output json > gitversion.json
-        echo "next-major-version=$(jq -r '.NextMajorVersion' gitversion.json)" >> "$GITHUB_ENV"
-        echo "major=$(jq -r '.Major' gitversion.json)" >> "$GITHUB_ENV"
 
     - name: Configure Git
       run: |
