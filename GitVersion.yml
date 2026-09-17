@@ -1,0 +1,7 @@
+# Mainline versioning (GitVersion 6+): main is the stable release line, so it
+# only reports stable versions at tagged commits; the release workflow cuts a
+# version tag on develop-to-main merges (see "Tag main release commit").
+# All other branches track the next release as a prerelease
+# (develop -> 0.2.0-alpha.N style).
+strategies:
+  - Mainline
