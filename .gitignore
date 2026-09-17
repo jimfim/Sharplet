@@ -141,3 +141,7 @@ coverage-*.xml
 
 # Local git worktrees (in-flight feature/agent work)
 .worktrees/
+
+# Local tool installs and output from the release workflow's Determine Version step
+.tools/
+gitversion.json
