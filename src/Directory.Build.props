@@ -1,0 +1,9 @@
+<Project>
+
+    <PropertyGroup>
+        <!-- commit packages.lock.json next to every project so transitive dependency
+             versions are pinned; CI restores in locked mode so drift fails the build -->
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    </PropertyGroup>
+
+</Project>

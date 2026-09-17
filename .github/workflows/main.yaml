@@ -3,79 +3,107 @@
 name: CI
 
 # Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
+# events for the main and develop branches
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+  # Runs on every push and pull request. Make the "CI / build" check required on
+  # protected branches (Settings > Branches > Required status checks; select
+  # "CI / build", not "SonarCloud / build") so a failing build blocks merges.
+  # The SonarCloud quality gate is informational only and never blocks merges.
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    # Setup
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
+      with:
+        dotnet-version: 10.x
+        source-url: https://nuget.pkg.github.com/jimfim/index.json
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    # Build; -warnaserror on NU1902..NU1904 fails the build when a direct or
+    # transitive package has a known moderate+ severity vulnerability;
+    # LockedMode=error fails the build when the committed packages.lock.json files
+    # do not match the resolved package versions
+    - name: Build and Test
+      run: dotnet build src -c Release -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
+
+  # Only runs on pushes to main/develop (never on pull requests), so a failed
+  # publish can neither block a merge nor leak artifacts from a PR.
+  # Requires a successful build first.
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
     - name: Fetch all history for all tags and branches
       run: git fetch --prune --unshallow
 
     - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@v0
+      uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
       with:
         versionSpec: '5.x'
 
     - name: Determine Version
       id:   gitversion # id to later be referenced
-      uses: gittools/actions/gitversion/execute@v0
+      uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
 
-      
     - name: Configure Git
       run: |
         git config user.name "$GITHUB_ACTOR"
         git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
     - name: Login to Docker Hub
-      uses: docker/login-action@v2
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Install Helm
-      uses: azure/setup-helm@v3
-    
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
+
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
       with:
-        dotnet-version: 8.x
+        dotnet-version: 10.x
         source-url: https://nuget.pkg.github.com/jimfim/index.json
       env:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        
-    # Build
+
+    # Build; same vulnerability and lock-file gates as the build job so a
+    # vulnerable or drifted package can never be published
     - name: Build and Test
-      run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src
+      run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
 
     #release
-        
+
     - name: push nuget packages
       env:
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
 
-    ## Docker 
+    ## Docker
     - name: Build and push
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
       with:
         file: Dockerfile
         push: true
-        tags: jimfim/sharplet:${{ steps.gitversion.outputs.SemVer }}
+        tags: jimjim/sharplet:${{ steps.gitversion.outputs.SemVer }}
 
     ## helm
     - name: Helm Chart Update, Package and Push
@@ -86,6 +114,6 @@ jobs:
         cat Chart.yaml
 
     - name: Run chart-releaser
-      uses: helm/chart-releaser-action@v1.6.0
+      uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f  # v1.7.0
       env:
         CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

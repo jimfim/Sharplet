@@ -1,0 +1,9 @@
+# Dependabot configuration. Version tags in the workflows are pinned to commit SHAs
+# (see the trailing # <version> comments); dependabot refreshes the SHA when the
+# vendor releases a new version of the action.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

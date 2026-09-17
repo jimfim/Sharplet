@@ -1,62 +1,30 @@
-﻿// See https://aka.ms/new-console-template for more information
-
-using System.Net;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
-using Json.Patch;
+﻿using System.Text;
+using Sharplet.CSR;
 using k8s;
 using k8s.Models;
 
-string GenerateCertificate(string name)
-{
-    var sanBuilder = new SubjectAlternativeNameBuilder();
-    sanBuilder.AddIpAddress(IPAddress.Loopback);
-    // sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
-    // sanBuilder.AddDnsName("localhost");
-    // sanBuilder.AddDnsName(Environment.MachineName);
+// The CSR tool's orchestration: config -> key + CSR generation -> delete stale CSR ->
+// create -> approve -> write the certificate out. The steps themselves live on Csr.
+// BuildDefaultConfig honors the KUBECONFIG override, then ~/.kube/config (BuildConfigFromConfigFile ignores it).
+KubernetesClientConfiguration config = KubernetesClientConfiguration.BuildDefaultConfig();
+Kubernetes client = new(config);
+string name = Environment.GetEnvironmentVariable("SHARPLET_NODE_NAME") ?? "sharplet";
+string certFile = Environment.GetEnvironmentVariable("APISERVER_CERT_LOCATION") ?? Path.Combine(await Csr.ResolveCertificateDirectoryAsync(), "cert.pem");
+string keyFile = Environment.GetEnvironmentVariable("APISERVER_KEY_LOCATION") ?? Path.Combine(await Csr.ResolveCertificateDirectoryAsync(), "key.pem");
 
-    var distinguishedName = new X500DistinguishedName($"CN=system:node:{name},O=system:nodes");
-
-    using var rsa = RSA.Create(4096);
-    var request = new CertificateRequest(distinguishedName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    var privateKeyPem = rsa.ExportRSAPrivateKeyPem();
-    var privateKeyBase64 = Convert.ToBase64String(Encoding.ASCII.GetBytes(privateKeyPem));
-    //Console.WriteLine("--- private");
-    Console.WriteLine($"apiserverKey: {privateKeyBase64}");
-    //File.WriteAllText("/etc/virtual-kubelet/key.pem", privateKeyPem);
-    request.CertificateExtensions.Add(
-        new X509KeyUsageExtension(X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature, false));
-    request.CertificateExtensions.Add(
-        new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, false)); // server auth
-    //request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.2") }, false)); // client auth
-
-    request.CertificateExtensions.Add(sanBuilder.Build());
-    var csr = request.CreateSigningRequest();
-    var pemKey = "-----BEGIN CERTIFICATE REQUEST-----\r\n" +
-                 Convert.ToBase64String(csr) +
-                 "\r\n-----END CERTIFICATE REQUEST-----";
-
-    return pemKey;
-}
-
-
-var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
-IKubernetes client = new Kubernetes(config);
-//Console.WriteLine("Starting Request!");
-var name = "demo";
-var x509 = GenerateCertificate(name);
-var encodedCsr = Encoding.UTF8.GetBytes(x509);
+string x509 = await Csr.GenerateCertificateAsync(name, keyFile);
+byte[] encodedCsr = Encoding.UTF8.GetBytes(x509);
 try
 {
     await client.CertificatesV1.DeleteCertificateSigningRequestWithHttpMessagesAsync(name);
 }
 catch
 {
+    // Expected on first run: there is no CSR to delete. Any other failure (e.g. the API
+    // being unreachable) will surface when the create below is attempted.
 }
 
-var request = new V1CertificateSigningRequest
+V1CertificateSigningRequest request = new()
 {
     ApiVersion = "certificates.k8s.io/v1",
     Kind = "CertificateSigningRequest",
@@ -68,35 +36,21 @@ var request = new V1CertificateSigningRequest
     {
         Request = encodedCsr,
         SignerName = "kubernetes.io/kubelet-serving",
-        //SignerName = "kubernetes.io/kube-apiserver-client-kubelet",
         Usages = new List<string> { "key encipherment", "digital signature", "server auth" },
-        //Usages = new List<string> { "key encipherment", "digital signature", "client auth" },
-        ExpirationSeconds = 600 // minimum should be 10 minutes
+        ExpirationSeconds = 62208000 // 720 days: max the kubelet-serving signer allows, what real kubelets request
     }
 };
-
 await client.CertificatesV1.CreateCertificateSigningRequestAsync(request);
 
-var serializeOptions = new JsonSerializerOptions
+byte[]? certificate = await Csr.ApproveCertificateAsync(client, name);
+if (certificate is null)
 {
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    WriteIndented = true
-};
-var readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-var old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
+    await Console.Error.WriteLineAsync($"CSR '{name}' was not signed by the cluster; nothing to write.");
+    return 1;
+}
 
-var replace = new List<V1CertificateSigningRequestCondition>
-{
-    new("True", "Approved", DateTime.UtcNow, DateTime.UtcNow, "This certificate was approved by k8s client", "Approve")
-};
-readCert.Status.Conditions = replace;
+await Csr.WriteCertificateAsync(certificate, certFile);
 
-var expected = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
-
-var patch = old.CreatePatch(expected);
-await client.CertificatesV1.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch),
-    name);
-await Task.Delay(2000);
-var latest = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
-
-Console.WriteLine($"apiserverCert: {Convert.ToBase64String(latest.Status.Certificate)}");
+await Console.Out.WriteLineAsync($"certificate written to {certFile}");
+await Console.Out.WriteLineAsync($"private key written to {keyFile}");
+return 0;
