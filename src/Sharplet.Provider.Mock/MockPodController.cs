@@ -1,4 +1,5 @@
 ﻿using k8s;
+using k8s.Autorest;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
 using Sharplet.Core;
@@ -6,12 +7,21 @@ using Sharplet.Core;
 namespace Sharplet.Provider.Mock;
 
 /// <summary>
-/// This just updates the apiserver to say everything is running smoothly. even though there is nothing backing it.
+/// Reference <see cref="IPodController"/> that reports every pod on the virtual node as running smoothly,
+/// even though there is nothing backing it.
 /// </summary>
+/// <remarks>
+/// The <c>sharplet.io/mock-behavior</c> pod annotation selects the status shape to report: <c>healthy</c>
+/// (the default), <c>notready</c>, <c>liveness-fail</c>, and <c>crashloop</c>. A missing or unknown value is
+/// reported as <c>healthy</c> and logged at debug level. Only <c>healthy</c> is fully implemented; the other
+/// shapes report the healthy status until they are implemented.
+/// </remarks>
 public class MockPodController : IPodController
 {
     private readonly ILogger<MockPodController> _logger;
     private readonly IKubernetes _kubernetes;
+
+    private const string MockBehaviorAnnotation = "sharplet.io/mock-behavior";
 
     public MockPodController(ILogger<MockPodController> logger, IKubernetes kubernetes)
     {
@@ -54,9 +64,47 @@ public class MockPodController : IPodController
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GetPodStatusAsync");
-        var podAsync = await _kubernetes.CoreV1.ReadNamespacedPodWithHttpMessagesAsync(name, @namespace, cancellationToken: cancellationToken);
+        HttpOperationResponse<V1Pod> response = await _kubernetes.CoreV1
+            .ReadNamespacedPodWithHttpMessagesAsync(name, @namespace, cancellationToken: cancellationToken);
+        V1Pod pod = response.Body;
+        string behavior = GetMockBehavior(pod);
+        if (IsUnknownBehavior(behavior))
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("unknown {Annotation} value {Behavior}, reporting the healthy shape",
+                    MockBehaviorAnnotation, behavior);
+            }
+        }
 
-        var containerStatusList = podAsync.Body.Spec.Containers.Select(container => new V1ContainerStatus
+        return behavior switch
+        {
+            "notready" => BuildNotReadyStatus(pod),
+            "liveness-fail" => BuildLivenessFailStatus(pod),
+            "crashloop" => BuildCrashLoopStatus(pod),
+            _ => BuildHealthyStatus(pod),
+        };
+    }
+
+    /// <summary>
+    /// Reads the <c>sharplet.io/mock-behavior</c> pod annotation; a missing or blank value means
+    /// <c>healthy</c>.
+    /// </summary>
+    private static string GetMockBehavior(V1Pod pod)
+    {
+        string? behavior = pod.Metadata?.Annotations is { } annotations
+            && annotations.TryGetValue(MockBehaviorAnnotation, out string? value)
+                ? value
+                : null;
+        return string.IsNullOrWhiteSpace(behavior) ? "healthy" : behavior;
+    }
+
+    private static bool IsUnknownBehavior(string behavior)
+        => behavior is not ("healthy" or "notready" or "liveness-fail" or "crashloop");
+
+    private V1PodStatus BuildHealthyStatus(V1Pod pod)
+    {
+        List<V1ContainerStatus> containerStatusList = pod.Spec.Containers.Select(container => new V1ContainerStatus
             {
                 Image = container.Image,
                 Name = container.Name,
@@ -71,7 +119,8 @@ public class MockPodController : IPodController
         {
             _logger.LogDebug("setting pod ip to {PodIp}", localIp);
         }
-        var status = new V1PodStatus
+
+        return new V1PodStatus
         {
             Phase = "Running",
             ContainerStatuses = containerStatusList,
@@ -117,8 +166,15 @@ public class MockPodController : IPodController
                 }
             }
         };
-        return status;
     }
+
+    // The not-ready, liveness-failure, and crash-loop shapes land in their own issues; until then
+    // each recognized value reports the healthy shape so the annotation is testable end to end.
+    private V1PodStatus BuildNotReadyStatus(V1Pod pod) => BuildHealthyStatus(pod);
+
+    private V1PodStatus BuildLivenessFailStatus(V1Pod pod) => BuildHealthyStatus(pod);
+
+    private V1PodStatus BuildCrashLoopStatus(V1Pod pod) => BuildHealthyStatus(pod);
 
     public async Task<IEnumerable<V1Pod>> GetPodsAsync(CancellationToken cancellationToken = default)
     {
