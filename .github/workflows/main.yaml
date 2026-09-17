@@ -63,6 +63,14 @@ jobs:
       id:   gitversion # id to later be referenced
       uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
 
+    - name: Export GitVersion variables
+      # The execute step only exposes scalar outputs, so re-emit the full JSON to
+      # surface next-major-version and major to the publish steps via the job env
+      run: |
+        dotnet-gitversion /output json > gitversion.json
+        echo "next-major-version=$(jq -r '.NextMajorVersion' gitversion.json)" >> "$GITHUB_ENV"
+        echo "major=$(jq -r '.Major' gitversion.json)" >> "$GITHUB_ENV"
+
     - name: Configure Git
       run: |
         git config user.name "$GITHUB_ACTOR"
