@@ -61,7 +61,7 @@ public class MockPodController : IPodController
                 Image = container.Image,
                 Name = container.Name,
                 Ready = true,
-                RestartCount = 1,
+                RestartCount = 0,
                 Started = true,
                 State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = DateTime.Now } }
             })

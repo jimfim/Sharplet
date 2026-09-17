@@ -154,6 +154,8 @@ public class MockPodControllerTests
         Assert.True(container.Ready);
         Assert.Equal("app", container.Name);
         Assert.Equal("busybox", container.Image);
+        // A container that started once and never restarted reports restartCount 0.
+        Assert.Equal(0, container.RestartCount);
         Assert.Equal("10.0.0.9", status.PodIP);
         Assert.Equal("10.0.0.9", status.HostIP);
         // The IP the mock reports is surfaced at debug level for local debugging.
