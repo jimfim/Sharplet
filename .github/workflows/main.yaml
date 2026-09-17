@@ -54,22 +54,29 @@ jobs:
     - name: Fetch all history for all tags and branches
       run: git fetch --prune --unshallow
 
-    - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
       with:
-        versionSpec: '6.x'
+        dotnet-version: 10.x
+        source-url: https://nuget.pkg.github.com/jimfim/index.json
+      env:
+        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
     - name: Determine Version
-      id:   gitversion # id to later be referenced
-      uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
-
-    - name: Export GitVersion variables
-      # The execute step only exposes scalar outputs, so re-emit the full JSON to
-      # surface next-major-version and major to the publish steps via the job env
+      id: gitversion # id to later be referenced
+      # The gittools actions can only install GitVersion 6.x on current runners,
+      # and 6.x no longer treats main as a stable mainline branch, so run the
+      # pinned 5.x tool directly to keep main releases stable (0.1.x, not 0.0.1-N)
+      env:
+        DOTNET_ROLL_FORWARD: Major
       run: |
-        dotnet-gitversion /output json > gitversion.json
-        echo "next-major-version=$(jq -r '.NextMajorVersion' gitversion.json)" >> "$GITHUB_ENV"
-        echo "major=$(jq -r '.Major' gitversion.json)" >> "$GITHUB_ENV"
+        dotnet tool install --tool-path .tools GitVersion.Tool --version 5.12.0
+        ./.tools/dotnet-gitversion /output json > gitversion.json
+        {
+          echo "semVer=$(jq -r '.SemVer' gitversion.json)"
+          echo "majorMinorPatch=$(jq -r '.MajorMinorPatch' gitversion.json)"
+          echo "fullSemVer=$(jq -r '.FullSemVer' gitversion.json)"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Configure Git
       run: |
@@ -84,14 +91,6 @@ jobs:
 
     - name: Install Helm
       uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
-
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
-      with:
-        dotnet-version: 10.x
-        source-url: https://nuget.pkg.github.com/jimfim/index.json
-      env:
-        NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
     # Build; same vulnerability and lock-file gates as the build job so a
     # vulnerable or drifted package can never be published
