@@ -128,7 +128,7 @@ jobs:
       with:
         file: Dockerfile
         push: true
-        tags: jimjim/sharplet:${{ steps.gitversion.outputs.semVer }}
+        tags: jimfim/sharplet:${{ steps.gitversion.outputs.semVer }}
 
     ## helm
     - name: Helm Chart Update, Package and Push

@@ -3,7 +3,7 @@ name: sharplet
 description: "C# virtual kubelet (Kubernetes node agent) - reference implementation of a virtual node for external systems, with a bundled mock provider that spoofs running pods."
 type: application
 maintainers:
-  - name: jimjim
+  - name: jimfim
 keywords:
   - virtual-kubelet
   - kubelet
