@@ -46,7 +46,7 @@ Everything below runs against a throwaway minikube cluster: the only thing actua
 - A container runtime that minikube can drive: Docker, Podman, or a VM driver (`qemu`, `podman`, ...)
 - [Helm 3](https://helm.sh/docs/intro/install/)
 - `kubectl` (or use `minikube kubectl -- <cmd>` / `minikube helm -- <cmd>` aliases)
-- .NET 8 SDK — only if you want to run the kubelet outside the cluster (see [Debugging in your IDE](#debugging-in-your-ide))
+- .NET 10 SDK — only if you want to run the kubelet outside the cluster (see [Debugging in your IDE](#debugging-in-your-ide))
 
 ### 1. Start minikube
 
