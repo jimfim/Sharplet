@@ -100,7 +100,7 @@ Logging:
 ## CI, releases & the Helm chart
 
 - A change is not done until `dotnet build src -c Release` passes locally **and** the CI build check passes on the PR. The SonarCloud quality gate is advisory: a red gate shows a failed step (via `continue-on-error`) but the job still completes and does not block the merge.
-- CI (`.github/workflows/main.yaml`) computes the version with GitVersion and publishes: NuGet to GitHub Packages, Docker image as `jimjim/sharplet:<semver>`, and the Helm chart via chart-releaser.
+- CI (`.github/workflows/main.yaml`) computes the version with GitVersion and publishes: NuGet to GitHub Packages, Docker image as `jimfim/sharplet:<semver>`, and the Helm chart via chart-releaser.
 - `charts/sharplet/Chart.yaml` keeps `version: 0.0.0` / `appVersion: 0.0.0` on purpose — CI rewrites them with `sed`. **Never commit a hand-bumped chart version**; only touch `Chart.yaml` when the chart structure itself changes.
 - Local cluster overrides belong in `values.local.yaml` (gitignored) — never commit cluster-specific values.
 

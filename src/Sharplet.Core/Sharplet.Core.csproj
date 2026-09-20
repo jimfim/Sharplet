@@ -7,9 +7,9 @@
         <Nullable>enable</Nullable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Description>C# reference implementation of a Kubernetes virtual node (virtual kubelet); consumers implement the documented IPodController / INodeController / IEventWatcher interfaces to provide their own provider.</Description>
-        <Authors>jimjim</Authors>
-        <ProjectUrl>https://github.com/jimjim/Sharplet</ProjectUrl>
-        <RepositoryUrl>https://github.com/jimjim/Sharplet</RepositoryUrl>
+        <Authors>jimfim</Authors>
+        <ProjectUrl>https://github.com/jimfim/Sharplet</ProjectUrl>
+        <RepositoryUrl>https://github.com/jimfim/Sharplet</RepositoryUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
