@@ -1,6 +1,10 @@
 # Sharplet - C# Virtual Kubelet
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/jimfim/Sharplet/actions/workflows/main.yaml/badge.svg)](https://github.com/jimfim/Sharplet/actions/workflows/main.yaml)
+[![NuGet](https://img.shields.io/badge/NuGet-GitHub%20Packages-5a29e4.svg)](https://github.com/users/jimfim/packages?ecosystem=nuget)
+[![Docker Pulls](https://img.shields.io/docker/pulls/jimjim/sharplet)](https://hub.docker.com/r/jimjim/sharplet)
+[![SonarCloud Quality Gate](https://sonarcloud.io/images/project_badges/quality_gate/jimfim_Sharplet.png)](https://sonarcloud.io/summary/new_code?id=jimfim_Sharplet)
 
 Sharplet is an implementation of a Kubernetes node agent (similar to Virtual Kubelet) using C#. It allows Kubernetes clusters to seamlessly integrate with external systems or services by abstracting node management and pod execution.
 
