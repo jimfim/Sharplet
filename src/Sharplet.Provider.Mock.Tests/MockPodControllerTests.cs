@@ -164,6 +164,41 @@ public class MockPodControllerTests
     }
 
     [Fact]
+    public async Task GetPodStatusAsync_WithUnknownBehaviorAnnotation_ReportsTheHealthyShape()
+    {
+        CapturingLogger<MockPodController> logger = new();
+
+        V1PodStatus status = await GetPodStatusAsyncWithBehavior("explodes", logger);
+
+        AssertHealthyStatus(status);
+        // An unrecognized value falls back to healthy and is surfaced at debug level.
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Debug && entry.Message.Contains("explodes"));
+    }
+
+    [Fact]
+    public async Task GetPodStatusAsync_WithExplicitHealthyAnnotation_ReportsTheHealthyShape()
+    {
+        CapturingLogger<MockPodController> logger = new();
+
+        V1PodStatus status = await GetPodStatusAsyncWithBehavior("healthy", logger);
+
+        AssertHealthyStatus(status);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains("mock-behavior"));
+    }
+
+    [Fact]
+    public async Task GetPodStatusAsync_WithNotReadyAnnotation_StillReportsTheHealthyShape()
+    {
+        CapturingLogger<MockPodController> logger = new();
+
+        V1PodStatus status = await GetPodStatusAsyncWithBehavior("notready", logger);
+
+        // The not-ready shape lands in its own issue; until then the recognized value reports healthy.
+        AssertHealthyStatus(status);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains("mock-behavior"));
+    }
+
+    [Fact]
     public async Task GetPodsAsync_ReturnsThePodsInTheDefaultNamespace()
     {
         ICoreV1Operations coreV1 = Substitute.For<ICoreV1Operations>();
@@ -211,5 +246,43 @@ public class MockPodControllerTests
             Arg.Any<int?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(), Arg.Any<int?>(),
             Arg.Any<bool?>(), Arg.Any<bool?>(), Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(),
             CancellationToken.None);
+    }
+
+    private static async Task<V1PodStatus> GetPodStatusAsyncWithBehavior(string behavior, CapturingLogger<MockPodController> logger)
+    {
+        ICoreV1Operations coreV1 = Substitute.For<ICoreV1Operations>();
+        HttpOperationResponse<V1Pod> response = new();
+        response.Body = new V1Pod
+        {
+            Metadata = new V1ObjectMeta
+            {
+                Name = "test-pod",
+                Annotations = new Dictionary<string, string> { ["sharplet.io/mock-behavior"] = behavior },
+            },
+            Spec = new V1PodSpec
+            {
+                Containers = new List<V1Container> { new() { Image = "busybox", Name = "app" } },
+            },
+        };
+        coreV1.ReadNamespacedPodWithHttpMessagesAsync(
+                Arg.Any<string>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(response));
+        IKubernetes kubernetes = Substitute.For<IKubernetes>();
+        kubernetes.CoreV1.Returns(coreV1);
+        MockPodController controller = new(logger, kubernetes);
+
+        return await controller.GetPodStatusAsync("default", "test-pod", CancellationToken.None);
+    }
+
+    private static void AssertHealthyStatus(V1PodStatus status)
+    {
+        Assert.Equal("Running", status.Phase);
+        V1ContainerStatus container = Assert.Single(status.ContainerStatuses);
+        Assert.True(container.Ready);
+        Assert.Equal(0, container.RestartCount);
+        Assert.All(status.Conditions, condition => Assert.Equal("True", condition.Status));
+        Assert.Equal(
+            new[] { "ContainersReady", "Initialized", "PodScheduled", "Ready" },
+            status.Conditions.Select(condition => condition.Type).OrderBy(type => type));
     }
 }
