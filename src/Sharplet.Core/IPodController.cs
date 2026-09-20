@@ -1,6 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
-
-using k8s.Models;
+﻿using k8s.Models;
 
 namespace Sharplet.Core;
 
