@@ -2,9 +2,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 WORKDIR /App
 
 # Copy the source tree (keeping the src/ subdirectory so relative package
-# references like Sharplet.Core's ../..\/Readme.md resolve as in the repo)
+# references like Sharplet.Core's ../..\/README.md resolve as in the repo)
 COPY ./src /App/src
-COPY Readme.md /App/Readme.md
+COPY README.md /App/README.md
 # Restore as distinct layers
 RUN dotnet restore src
 # Publish only the host project so the runtime image does not ship the

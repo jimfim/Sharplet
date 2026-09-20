@@ -7,7 +7,7 @@
 Dockerfile*
 **/*.trx
 **/*.md
-!Readme.md
+!README.md
 **/*.ps1
 **/*.cmd
 **/*.sh
