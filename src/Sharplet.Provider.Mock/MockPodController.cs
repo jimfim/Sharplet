@@ -12,9 +12,10 @@ namespace Sharplet.Provider.Mock;
 /// </summary>
 /// <remarks>
 /// The <c>sharplet.io/mock-behavior</c> pod annotation selects the status shape to report: <c>healthy</c>
-/// (the default), <c>notready</c>, <c>liveness-fail</c>, and <c>crashloop</c>. A missing or unknown value is
-/// reported as <c>healthy</c> and logged at debug level. Only <c>healthy</c> is fully implemented; the other
-/// shapes report the healthy status until they are implemented.
+/// (the default), <c>notready</c> (running but not ready), <c>liveness-fail</c> (a container terminated by
+/// a failed liveness probe), and <c>crashloop</c> (a container in <c>CrashLoopBackOff</c> with a restart
+/// count that climbs over time). A missing or unknown value is reported as <c>healthy</c> and logged at
+/// debug level.
 /// </remarks>
 public class MockPodController : IPodController
 {
@@ -104,77 +105,151 @@ public class MockPodController : IPodController
 
     private V1PodStatus BuildHealthyStatus(V1Pod pod)
     {
-        List<V1ContainerStatus> containerStatusList = pod.Spec.Containers.Select(container => new V1ContainerStatus
+        DateTime now = DateTime.UtcNow;
+        List<V1ContainerStatus> containerStatuses = pod.Spec.Containers.Select(container => new V1ContainerStatus
             {
                 Image = container.Image,
                 Name = container.Name,
                 Ready = true,
                 RestartCount = 0,
                 Started = true,
-                State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = DateTime.Now } }
+                State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = now } },
             })
             .ToList();
+
+        return BuildStatus(containerStatuses, ready: true);
+    }
+
+    private V1PodStatus BuildNotReadyStatus(V1Pod pod)
+    {
+        DateTime now = DateTime.UtcNow;
+        List<V1ContainerStatus> containerStatuses = pod.Spec.Containers.Select(container => new V1ContainerStatus
+            {
+                Image = container.Image,
+                Name = container.Name,
+                Ready = false,
+                RestartCount = 0,
+                Started = true,
+                State = new V1ContainerState { Running = new V1ContainerStateRunning { StartedAt = now } },
+            })
+            .ToList();
+
+        // A pod that fails its readiness probe stays Running; only the ready gates flip to False.
+        return BuildStatus(containerStatuses, ready: false);
+    }
+
+    private V1PodStatus BuildLivenessFailStatus(V1Pod pod)
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime startedAt = GetPodStart(pod);
+        List<V1ContainerStatus> containerStatuses = pod.Spec.Containers.Select(container => new V1ContainerStatus
+            {
+                Image = container.Image,
+                Name = container.Name,
+                Ready = false,
+                RestartCount = 1,
+                Started = false,
+                State = new V1ContainerState
+                {
+                    // The run the kubelet just killed for failing its liveness probe.
+                    Terminated = new V1ContainerStateTerminated
+                    {
+                        ExitCode = 2,
+                        Reason = "Error",
+                        Message = "Liveness probe failed",
+                        StartedAt = startedAt,
+                        FinishedAt = now,
+                    },
+                },
+                // The run before it: alive from pod start until the kubelet killed it.
+                LastState = new V1ContainerState
+                {
+                    Running = new V1ContainerStateRunning { StartedAt = startedAt },
+                },
+            })
+            .ToList();
+
+        return BuildStatus(containerStatuses, ready: false);
+    }
+
+    private V1PodStatus BuildCrashLoopStatus(V1Pod pod)
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime startedAt = GetPodStart(pod);
+        // Derived from the pod's start time, so the count climbs on every status tick without
+        // any provider-side state.
+        int restarts = CrashLoopBackoff.RestartCountAfter(now - startedAt);
+        string backoff = CrashLoopBackoff.FormatDuration(CrashLoopBackoff.NextRestartDelay(restarts));
+        string podFullName = $"{pod.Metadata?.NamespaceProperty ?? "default"}/{pod.Metadata?.Name}";
+        List<V1ContainerStatus> containerStatuses = pod.Spec.Containers.Select(container => new V1ContainerStatus
+            {
+                Image = container.Image,
+                Name = container.Name,
+                Ready = false,
+                RestartCount = restarts,
+                Started = false,
+                State = new V1ContainerState
+                {
+                    Waiting = new V1ContainerStateWaiting
+                    {
+                        Reason = "CrashLoopBackOff",
+                        Message = $"back-off {backoff} restarting failed container={container.Name},pod={podFullName}/{container.Name}",
+                    },
+                },
+                LastState = new V1ContainerState
+                {
+                    Terminated = new V1ContainerStateTerminated
+                    {
+                        ExitCode = 2,
+                        Reason = "Error",
+                        StartedAt = startedAt,
+                        FinishedAt = now,
+                    },
+                },
+            })
+            .ToList();
+
+        return BuildStatus(containerStatuses, ready: false);
+    }
+
+    /// <summary>
+    /// The scaffolding every shape reports: the pod is Running, its addresses are the kubelet's own
+    /// pod IP (so the API server can proxy to it), and the pod conditions reflect
+    /// <paramref name="ready"/>.
+    /// </summary>
+    private V1PodStatus BuildStatus(List<V1ContainerStatus> containerStatuses, bool ready)
+    {
         string localIp = Environment.GetEnvironmentVariable("VKUBELET_POD_IP") ?? Environment.GetEnvironmentVariable("POD_IP") ?? "127.0.0.1";
         if (_logger.IsEnabled(LogLevel.Debug))
         {
             _logger.LogDebug("setting pod ip to {PodIp}", localIp);
         }
 
+        DateTime now = DateTime.UtcNow;
         return new V1PodStatus
         {
             Phase = "Running",
-            ContainerStatuses = containerStatusList,
+            ContainerStatuses = containerStatuses,
             HostIP = localIp,
-            HostIPs = new List<V1HostIP>
-            {
-                new V1HostIP { Ip = localIp }
-            },
+            HostIPs = new List<V1HostIP> { new V1HostIP { Ip = localIp } },
             PodIP = localIp,
-            PodIPs = new List<V1PodIP>
-            {
-                new V1PodIP { Ip = localIp }
-            },
+            PodIPs = new List<V1PodIP> { new V1PodIP { Ip = localIp } },
             Conditions = new List<V1PodCondition>
             {
-                new()
-                {
-                    Status = "True",
-                    Type = "Initialized",
-                    LastProbeTime = DateTime.Now,
-                    LastTransitionTime = DateTime.Now
-                },
-                new()
-                {
-                    Status = "True",
-                    Type = "Ready",
-                    LastProbeTime = DateTime.Now,
-                    LastTransitionTime = DateTime.Now
-                },
-                new()
-                {
-                    Status = "True",
-                    Type = "ContainersReady",
-                    LastProbeTime = DateTime.Now,
-                    LastTransitionTime = DateTime.Now
-                },
-                new()
-                {
-                    Status = "True",
-                    Type = "PodScheduled",
-                    LastProbeTime = DateTime.Now,
-                    LastTransitionTime = DateTime.Now
-                }
-            }
+                new() { Type = "Initialized", Status = "True", LastProbeTime = now, LastTransitionTime = now },
+                new() { Type = "Ready", Status = ready ? "True" : "False", LastProbeTime = now, LastTransitionTime = now },
+                new() { Type = "ContainersReady", Status = ready ? "True" : "False", LastProbeTime = now, LastTransitionTime = now },
+                new() { Type = "PodScheduled", Status = "True", LastProbeTime = now, LastTransitionTime = now },
+            },
         };
     }
 
-    // The not-ready, liveness-failure, and crash-loop shapes land in their own issues; until then
-    // each recognized value reports the healthy shape so the annotation is testable end to end.
-    private V1PodStatus BuildNotReadyStatus(V1Pod pod) => BuildHealthyStatus(pod);
-
-    private V1PodStatus BuildLivenessFailStatus(V1Pod pod) => BuildHealthyStatus(pod);
-
-    private V1PodStatus BuildCrashLoopStatus(V1Pod pod) => BuildHealthyStatus(pod);
+    /// <summary>
+    /// When the container first started: the API server sets <c>status.startTime</c> once it has
+    /// observed the pod Running, so a pod that never did falls back to its creation timestamp.
+    /// </summary>
+    private static DateTime GetPodStart(V1Pod pod)
+        => pod.Status?.StartTime ?? pod.Metadata?.CreationTimestamp ?? DateTime.UtcNow;
 
     public async Task<IEnumerable<V1Pod>> GetPodsAsync(CancellationToken cancellationToken = default)
     {

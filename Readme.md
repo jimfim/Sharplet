@@ -141,11 +141,11 @@ The kubelet runs no probes and starts no containers, so the API server only ever
 | Value | Reported status |
 |---|---|
 | _(annotation missing)_ / `healthy` | pod running, all containers ready (the default) |
-| `notready` | pod is not ready |
-| `liveness-fail` | a container's liveness probe is failing |
-| `crashloop` | a container is crash-looping |
+| `notready` | pod is running but not ready (`Ready 0/1`) |
+| `liveness-fail` | a container terminated by a failed liveness probe (exit 2, error); restart count 1 |
+| `crashloop` | a container in `CrashLoopBackOff`; the restart count climbs the longer the annotation is set |
 
-Only `healthy` is fully implemented; `notready`, `liveness-fail`, and `crashloop` report the healthy shape until their real shapes land (#109, #110, #111). The routing itself already works end to end, which is what the commands below exercise.
+The mock reports the same status shapes a real kubelet would: a `notready` pod is running but not ready; a `liveness-fail` pod has a container in `Terminated` state (exit 2, error) that the kubelet killed after it failed its liveness probe; a `crashloop` pod has a container in `CrashLoopBackOff` whose restart count is derived from the pod's start time, so it climbs on every status tick following the kubelet's restart backoff (10s, 20s, 40s, ... capped at 5m).
 
 The mock re-reads the pod from the API server on every status tick (every 15 s in the sample kubelet; `PodStatusUpdateInterval` in `SharpConfig`), so `kubectl annotate` takes effect on the next tick — no restart, no provider-side state. An unknown value is reported as `healthy` and logged at debug level.
 
@@ -169,12 +169,21 @@ Example: annotating the sample pod and watching the kubelet pick it up on the ne
 $ kubectl annotate --overwrite pod nginx-7d4f9c8b5-x2k4p sharplet.io/mock-behavior=crashloop
 pod/nginx-7d4f9c8b5-x2k4p annotated
 
-# within one status tick (<= 15 s) the kubelet re-reads the pod and routes to the
-# crashloop builder; until that shape lands, the patched status is still the healthy
-# shape, so the pod keeps looking fine:
+# within one status tick (<= 15 s) the kubelet re-reads the pod and reports the crashloop shape:
+$ kubectl get pods
+NAME                  READY   STATUS             RESTARTS   AGE
+nginx-7d4f9c8b5-x2k4p   0/1     CrashLoopBackOff   1          4m32s
+
+$ kubectl get pods   # minutes later: the restart count climbs with the backoff
+NAME                  READY   STATUS             RESTARTS   AGE
+nginx-7d4f9c8b5-x2k4p   0/1     CrashLoopBackOff   7          16m
+
+# switch to a different behavior; the pod is running again but not ready:
+$ kubectl annotate --overwrite pod nginx-7d4f9c8b5-x2k4p sharplet.io/mock-behavior=notready
+pod/nginx-7d4f9c8b5-x2k4p annotated
 $ kubectl get pods
 NAME                  READY   STATUS    RESTARTS   AGE
-nginx-7d4f9c8b5-x2k4p   1/1     Running   0          4m32s
+nginx-7d4f9c8b5-x2k4p   0/1     Running   0          17m
 ```
 
 To watch the routing decision itself, enable debug logging on the kubelet:
@@ -190,7 +199,7 @@ An unknown value then shows up in the kubelet log as:
 unknown sharplet.io/mock-behavior value explodes, reporting the healthy shape
 ```
 
-Once the failure shapes land, the same commands drive the pod into the matching state (e.g. `Ready 0/1` for `notready`) — no other changes needed. For provider implementers this is the reference mechanism: the API server only ever sees what your `GetPodStatusAsync` returns, so simulating a failing pod is a matter of returning the failing status shape.
+For provider implementers this is the reference mechanism: the API server only ever sees what your `GetPodStatusAsync` returns, so making a pod look failing is a matter of returning the failing status shape.
 
 ### 7. The edit/rebuild/redeploy loop
 
@@ -248,7 +257,7 @@ Within one node-status tick (≤ 30 s) the node re-advertises that address and t
 | Sample pod stuck `Pending` | It must carry the `kubernetes.io/sharplet` toleration (it's in `test.yaml`); confirm the `sharplet` node is `Ready` and the kubelet status tracker is running (logs). |
 | `kubectl logs <virtual pod>` fails with an x509 error | The API server validates the kubelet's serving certificate. The chart-generated cert is signed by the chart's own CA, which most clusters don't trust — issue a cluster-CA-signed cert with the `Sharplet.CSR` tool instead (it also puts the node name and `VKUBELET_POD_IP`, when set, into the SAN). On minikube the chart-generated cert happens to be accepted. |
 | `kubectl logs` / k9s show nothing for a virtual pod (API server answers `404` for `pods/log`) | The node advertises `127.0.0.1` as its `InternalIP`, so the API server proxies the log request to its own loopback instead of the virtual kubelet (on minikube: the VM's real kubelet, which doesn't know the pod). In-cluster: the pod isn't getting `VKUBELET_POD_IP` — the chart sets it; a hand-rolled manifest needs `valueFrom: fieldRef: status.podIP` under that name. Running on your workstation: see [Debugging in your IDE](#debugging-in-your-ide) — set `VKUBELET_POD_IP` to the IP the cluster uses to reach your machine. |
-| Pod annotated `sharplet.io/mock-behavior=crashloop` still shows `Running` | Expected: only the `healthy` shape is implemented today; `notready`/`liveness-fail`/`crashloop` report the healthy status until #109/#110/#111 land. The routing is visible in the kubelet's debug log (see [Simulating pod failure modes](#simulating-pod-failure-modes-with-the-mock-provider)). |
+| A virtual pod shows `CrashLoopBackOff` or `0/1` even though nothing is actually failing | The `sharplet.io/mock-behavior` annotation is set on it: the mock reports the simulated failure shape. Remove the annotation (`kubectl annotate pod <pod> sharplet.io/mock-behavior-`) to return to healthy. |
 
 ### Teardown
 

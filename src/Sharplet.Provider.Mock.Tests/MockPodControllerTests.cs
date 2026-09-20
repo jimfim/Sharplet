@@ -187,15 +187,60 @@ public class MockPodControllerTests
     }
 
     [Fact]
-    public async Task GetPodStatusAsync_WithNotReadyAnnotation_StillReportsTheHealthyShape()
+    public async Task GetPodStatusAsync_WithNotReadyAnnotation_ReportsANotReadyPod()
     {
         CapturingLogger<MockPodController> logger = new();
 
         V1PodStatus status = await GetPodStatusAsyncWithBehavior("notready", logger);
 
-        // The not-ready shape lands in its own issue; until then the recognized value reports healthy.
-        AssertHealthyStatus(status);
-        Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains("mock-behavior"));
+        // The pod stays Running; the container keeps running but is not ready, and the
+        // ready conditions flip to False.
+        Assert.Equal("Running", status.Phase);
+        V1ContainerStatus container = Assert.Single(status.ContainerStatuses);
+        Assert.False(container.Ready);
+        Assert.Equal(0, container.RestartCount);
+        Assert.NotNull(container.State.Running);
+        AssertFalseReadyConditions(status);
+    }
+
+    [Fact]
+    public async Task GetPodStatusAsync_WithLivenessFailAnnotation_ReportsATerminatedContainer()
+    {
+        CapturingLogger<MockPodController> logger = new();
+
+        V1PodStatus status = await GetPodStatusAsyncWithBehavior("liveness-fail", logger);
+
+        // The kubelet killed the run for failing its liveness probe: the container is
+        // Terminated, the run before it is in LastState, and the ready conditions flip to False.
+        Assert.Equal("Running", status.Phase);
+        V1ContainerStatus container = Assert.Single(status.ContainerStatuses);
+        Assert.False(container.Ready);
+        Assert.Equal(1, container.RestartCount);
+        Assert.Equal(2, container.State.Terminated.ExitCode);
+        Assert.Equal("Error", container.State.Terminated.Reason);
+        Assert.Equal("Liveness probe failed", container.State.Terminated.Message);
+        Assert.NotNull(container.LastState.Running);
+        AssertFalseReadyConditions(status);
+    }
+
+    [Fact]
+    public async Task GetPodStatusAsync_WithCrashLoopAnnotation_ReportsCrashLoopBackOff()
+    {
+        CapturingLogger<MockPodController> logger = new();
+        // The pod started ~35s ago: the kubelet restarted it at t=10s and t=30s, so it has
+        // restarted twice and is now waiting out the 40s delay before the third restart.
+        DateTime startTime = DateTime.UtcNow.AddSeconds(-35);
+
+        V1PodStatus status = await GetPodStatusAsyncWithBehavior("crashloop", logger, startTime);
+
+        Assert.Equal("Running", status.Phase);
+        V1ContainerStatus container = Assert.Single(status.ContainerStatuses);
+        Assert.False(container.Ready);
+        Assert.Equal(2, container.RestartCount);
+        Assert.Equal("CrashLoopBackOff", container.State.Waiting.Reason);
+        Assert.Equal("back-off 40s restarting failed container=app,pod=default/test-pod/app", container.State.Waiting.Message);
+        Assert.NotNull(container.LastState.Terminated);
+        AssertFalseReadyConditions(status);
     }
 
     [Fact]
@@ -248,7 +293,7 @@ public class MockPodControllerTests
             CancellationToken.None);
     }
 
-    private static async Task<V1PodStatus> GetPodStatusAsyncWithBehavior(string behavior, CapturingLogger<MockPodController> logger)
+    private static async Task<V1PodStatus> GetPodStatusAsyncWithBehavior(string behavior, CapturingLogger<MockPodController> logger, DateTime? startTime = null)
     {
         ICoreV1Operations coreV1 = Substitute.For<ICoreV1Operations>();
         HttpOperationResponse<V1Pod> response = new();
@@ -257,12 +302,14 @@ public class MockPodControllerTests
             Metadata = new V1ObjectMeta
             {
                 Name = "test-pod",
+                NamespaceProperty = "default",
                 Annotations = new Dictionary<string, string> { ["sharplet.io/mock-behavior"] = behavior },
             },
             Spec = new V1PodSpec
             {
                 Containers = new List<V1Container> { new() { Image = "busybox", Name = "app" } },
             },
+            Status = startTime is null ? null : new V1PodStatus { StartTime = startTime },
         };
         coreV1.ReadNamespacedPodWithHttpMessagesAsync(
                 Arg.Any<string>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
@@ -284,5 +331,17 @@ public class MockPodControllerTests
         Assert.Equal(
             new[] { "ContainersReady", "Initialized", "PodScheduled", "Ready" },
             status.Conditions.Select(condition => condition.Type).OrderBy(type => type));
+    }
+
+    private static void AssertFalseReadyConditions(V1PodStatus status)
+    {
+        V1PodCondition ready = Assert.Single(status.Conditions, condition => condition.Type == "Ready");
+        V1PodCondition containersReady = Assert.Single(status.Conditions, condition => condition.Type == "ContainersReady");
+        Assert.Equal("False", ready.Status);
+        Assert.Equal("False", containersReady.Status);
+        V1PodCondition initialized = Assert.Single(status.Conditions, condition => condition.Type == "Initialized");
+        V1PodCondition scheduled = Assert.Single(status.Conditions, condition => condition.Type == "PodScheduled");
+        Assert.Equal("True", initialized.Status);
+        Assert.Equal("True", scheduled.Status);
     }
 }
