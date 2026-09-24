@@ -40,7 +40,7 @@ Consequences for how you work here:
 ## Branching model
 
 - `main` — release branch. Any push to it triggers a full publish (NuGet, Docker, Helm). **Never push here directly.**
-- `develop` — integration branch for day-to-day work. **Never push here directly.**
+- `develop` — integration branch for day-to-day work. Pushes to develop publish **prerelease** versions (GitVersion mainline, e.g. `x.y.z-develop.N`) to GitHub Packages, Docker Hub, and the Helm chart repo; stable releases come only from `main`. **Never push here directly.**
 - `feature/<short-kebab-description>` — one branch per change, e.g. `feature/mock-provider-in-core`. This is the established convention (see existing branches/PRs).
 - `fix/<short-kebab-description>` — small, targeted fixes.
 - `dependabot/*` — auto-created. Review and merge/close; never hand-edit.
