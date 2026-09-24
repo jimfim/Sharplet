@@ -123,12 +123,24 @@ jobs:
       run: dotnet nuget push "**/*.nupkg" --source "https://nuget.pkg.github.com/jimfim/index.json" --api-key ${{secrets.GITHUB_TOKEN}}
 
     ## Docker
+    - name: Determine image tags
+      id: image-tags
+      # The moving tag advances only on stable (main) releases: develop
+      # publishes prerelease versions, so jimfim/sharplet:stable must never
+      # point at a prerelease image.
+      run: |
+        TAGS="jimfim/sharplet:${{ steps.gitversion.outputs.semVer }}"
+        if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+          TAGS="$TAGS jimfim/sharplet:stable"
+        fi
+        echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
     - name: Build and push
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
       with:
         file: Dockerfile
         push: true
-        tags: jimfim/sharplet:${{ steps.gitversion.outputs.semVer }}
+        tags: ${{ steps.image-tags.outputs.tags }}
 
     ## helm
     - name: Helm Chart Update, Package and Push
