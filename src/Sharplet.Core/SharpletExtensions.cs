@@ -327,6 +327,7 @@ public static class SharpletExtensions
         collection.Services.AddHostedService<EventWatcherService>();
         collection.Services.AddHostedService<PodControllerService>();
         collection.Services.AddSingleton(configuration);
+        collection.Services.AddSingleton<PodErrorReporter>();
         collection.Services.AddSingleton<IEventWatcher, EventWatcher>();
     }
 }
