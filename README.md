@@ -200,3 +200,7 @@ helm uninstall sharplet
 kubectl delete -f test.yaml
 minikube stop        # or: minikube delete
 ```
+
+## Documentation
+
+The project documentation site is published from the `gh-pages` branch at <https://jimfim.github.io/Sharplet/>. It mirrors this README; when the two disagree, the README in this repository is the source of truth.
