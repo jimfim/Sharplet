@@ -11,7 +11,7 @@
         <ProjectUrl>https://github.com/jimfim/Sharplet</ProjectUrl>
         <RepositoryUrl>https://github.com/jimfim/Sharplet</RepositoryUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageReadmeFile>NuGetReadme.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -27,6 +27,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\NuGetReadme.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 </Project>
