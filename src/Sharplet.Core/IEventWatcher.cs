@@ -24,17 +24,19 @@ internal class EventWatcher : IEventWatcher
     private readonly IKubernetes _kubernetes;
     private readonly ILogger<EventWatcher> _logger;
     private readonly IPodController _podController;
+    private readonly PodErrorReporter _errorReporter;
     // Per-pod hash of the last pod spec this watcher has reacted to. A watch "Modified"
     // event fires for any change to a pod, including the status subresource that
     // PodControllerService patches on its timer, so only spec changes are actionable.
     private readonly ConcurrentDictionary<string, string> _seenSpecHashes = new();
 
     public EventWatcher(ILogger<EventWatcher> logger, IKubernetes kubernetes, IPodController podController,
-        SharpConfig config)
+        PodErrorReporter errorReporter, SharpConfig config)
     {
         _logger = logger;
         _kubernetes = kubernetes;
         _podController = podController;
+        _errorReporter = errorReporter;
         _config = config;
     }
 
@@ -76,9 +78,18 @@ internal class EventWatcher : IEventWatcher
                 {
                     // The pod already started on this node and its spec changed.
                     _logger.LogInformation("Item Modified {Name}", item.Name());
-                    await _podController.UpdatePodAsync(item);
-                    await PublishPodEventAsync(item, "Pod Updated", "Patched", "pod spec updated");
-                    _seenSpecHashes[podKey] = specHash;
+                    try
+                    {
+                        await _podController.UpdatePodAsync(item);
+                        await PublishPodEventAsync(item, "Pod Updated", "Patched", "pod spec updated");
+                        _seenSpecHashes[podKey] = specHash;
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        // Keep the last successful spec hash: the next spec change retries
+                        // the update instead of marking the failed spec as seen.
+                        await _errorReporter.ReportProviderErrorAsync(item, exception, "update");
+                    }
                 }
                 else
                 {
@@ -125,7 +136,17 @@ internal class EventWatcher : IEventWatcher
         {
             _logger.LogInformation("Item Added {Name} on Node {Node}", item.Name(), item.Spec.NodeName);
         }
-        await _podController.CreatePodAsync(item);
+        try
+        {
+            await _podController.CreatePodAsync(item);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Do not record the spec hash: the pod never started on this node, so a later
+            // spec change (or the status churn this error report causes) retries the create.
+            await _errorReporter.ReportProviderErrorAsync(item, exception, "create");
+            return;
+        }
         await PublishPodEventAsync(item, "Pod Created", "Started", "pod started");
         _seenSpecHashes[podKey] = ComputeSpecHash(item);
     }
@@ -136,24 +157,9 @@ internal class EventWatcher : IEventWatcher
         {
             _logger.LogInformation("Publishing Pod Event {Reason} for {Name}", reason, item.Name());
         }
-        await _kubernetes.CoreV1.CreateNamespacedEventAsync(new Corev1Event
-        {
-            InvolvedObject = new V1ObjectReference
-            {
-                ApiVersion = item.ApiVersion,
-                FieldPath = string.Empty,
-                Kind = item.Kind,
-                Name = item.Name(),
-                NamespaceProperty = item.Namespace(),
-                ResourceVersion = item.ResourceVersion(),
-                Uid = item.Uid()
-            },
-            Metadata = new V1ObjectMeta { GenerateName = generateName },
-            Reason = reason,
-            ReportingComponent = _config.NodeName,
-            Message = message,
-            Type = "Normal"
-        }, item.Namespace());
+        await _kubernetes.CoreV1.CreateNamespacedEventAsync(
+            PodEventFactory.CreatePodEvent(item, generateName, reason, message, "Normal", _config.NodeName),
+            item.Namespace());
     }
 
     private static string ComputeSpecHash(V1Pod item)

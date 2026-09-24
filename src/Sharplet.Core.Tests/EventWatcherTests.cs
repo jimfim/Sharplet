@@ -13,6 +13,8 @@ public class EventWatcherTests
     private readonly List<V1Pod> _createdPods = new();
     private readonly List<V1Pod> _updatedPods = new();
     private readonly List<V1Pod> _deletedPods = new();
+    private readonly List<V1Patch> _patchedStatuses = new();
+    private readonly PodErrorReporter _errorReporter;
     private readonly RecordingLogger<EventWatcher> _logger = new();
     private readonly IPodController _podController;
     private readonly EventWatcher _watcher;
@@ -25,6 +27,11 @@ public class EventWatcherTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(),
             Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
             .Returns(new HttpOperationResponse<Corev1Event>());
+        coreV1.PatchNamespacedPodStatusWithHttpMessagesAsync(
+            Arg.Do<V1Patch>(patch => _patchedStatuses.Add(patch)), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool?>(), Arg.Any<bool?>(),
+            Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HttpOperationResponse<V1Pod>()));
         IKubernetes kubernetes = Substitute.For<IKubernetes>();
         kubernetes.CoreV1.Returns(coreV1);
 
@@ -36,7 +43,9 @@ public class EventWatcherTests
         _podController.DeletePodAsync(Arg.Do<V1Pod>(p => _deletedPods.Add(p)), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        _watcher = new EventWatcher(_logger, kubernetes, _podController,
+        _errorReporter = new PodErrorReporter(new SharpConfig { NodeName = "sharplet" }, kubernetes,
+            new RecordingLogger<PodErrorReporter>());
+        _watcher = new EventWatcher(_logger, kubernetes, _podController, _errorReporter,
             new SharpConfig { NodeName = "sharplet" });
     }
 
@@ -218,6 +227,8 @@ public class EventWatcherTests
 
         IPodController podController = Substitute.For<IPodController>();
         EventWatcher watcher = new EventWatcher(new RecordingLogger<EventWatcher>(), kubernetes, podController,
+            new PodErrorReporter(new SharpConfig { NodeName = "sharplet" }, kubernetes,
+                new RecordingLogger<PodErrorReporter>()),
             new SharpConfig { NodeName = "sharplet" });
 
         await watcher.WatchEventStream();
@@ -248,6 +259,8 @@ public class EventWatcherTests
         IPodController podController = Substitute.For<IPodController>();
         podController.CreatePodAsync(Arg.Any<V1Pod>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         EventWatcher watcher = new EventWatcher(new RecordingLogger<EventWatcher>(), kubernetes, podController,
+            new PodErrorReporter(new SharpConfig { NodeName = "sharplet" }, kubernetes,
+                new RecordingLogger<PodErrorReporter>()),
             new SharpConfig { NodeName = "sharplet" });
 
         await Assert.ThrowsAnyAsync<Exception>(() => watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod()));
@@ -263,5 +276,84 @@ public class EventWatcherTests
         Assert.Empty(_createdPods);
         Assert.Empty(_updatedPods);
         Assert.Empty(_deletedPods);
+    }
+
+    [Fact]
+    public async Task Added_CreateFailure_PatchesPodStatusAndEmitsWarningEvent()
+    {
+        // The provider create throws: core writes the failure back to the API server so the
+        // pod is not left stuck in Pending with no signal.
+        _podController.CreatePodAsync(Arg.Do<V1Pod>(p => _createdPods.Add(p)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new Exception("backend exploded")));
+
+        await _watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod());
+
+        V1Pod patched = (V1Pod)Assert.Single(_patchedStatuses).Content;
+        Assert.Equal("Pending", patched.Status.Phase);
+        Assert.Equal("ProviderFailed", patched.Status.Reason);
+        Assert.Equal("backend exploded", patched.Status.Message);
+        // The stale resourceVersion is blanked so the status write cannot conflict.
+        Assert.Equal(string.Empty, patched.ResourceVersion());
+
+        Corev1Event warning = Assert.Single(_emittedEvents);
+        Assert.Equal("Warning", warning.Type);
+        Assert.Equal("ProviderCreateFailed", warning.Reason);
+        Assert.Equal("backend exploded", warning.Message);
+        Assert.Equal("sharplet", warning.ReportingComponent);
+        Assert.Equal("test-pod", warning.InvolvedObject.Name);
+    }
+
+    [Fact]
+    public async Task Added_CreateFailure_RestartPolicyNever_PatchesPodFailed()
+    {
+        V1Pod pod = CreatePod();
+        pod.Spec.RestartPolicy = "Never";
+        _podController.CreatePodAsync(Arg.Do<V1Pod>(p => _createdPods.Add(p)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new Exception("backend exploded")));
+
+        await _watcher.HandlePodEventAsync(WatchEventType.Added, pod);
+
+        V1Pod patched = (V1Pod)Assert.Single(_patchedStatuses).Content;
+        Assert.Equal("Failed", patched.Status.Phase);
+        Assert.Equal("ProviderFailed", patched.Status.Reason);
+    }
+
+    [Fact]
+    public async Task Modified_UpdateFailure_PatchesPodStatusAndEmitsWarningEvent()
+    {
+        await _watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod());
+        _podController.UpdatePodAsync(Arg.Do<V1Pod>(p => _updatedPods.Add(p)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new Exception("update failed")));
+
+        await _watcher.HandlePodEventAsync(WatchEventType.Modified,
+            CreatePod(image: "nginx:1.28", resourceVersion: "7"));
+
+        V1Pod patched = (V1Pod)Assert.Single(_patchedStatuses).Content;
+        Assert.Equal("Pending", patched.Status.Phase);
+        Assert.Equal("ProviderFailed", patched.Status.Reason);
+        Assert.Equal("update failed", patched.Status.Message);
+
+        Corev1Event warning = Assert.Single(_emittedEvents, e => e.Type == "Warning");
+        Assert.Equal("ProviderUpdateFailed", warning.Reason);
+        // The successful create still emitted its Started event; the failure emits no Patched event.
+        Assert.Equal("Started", _emittedEvents[0].Reason);
+    }
+
+    [Fact]
+    public async Task Added_CreateFailure_PodNotTracked_RetryOnSpecChange()
+    {
+        // First create attempt fails; the retry (after a spec change) succeeds.
+        _podController.CreatePodAsync(Arg.Any<V1Pod>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new Exception("backend exploded")), Task.CompletedTask);
+
+        await _watcher.HandlePodEventAsync(WatchEventType.Added, CreatePod());
+
+        // The failed pod was never tracked: a later spec change drives a fresh create
+        // instead of being treated as an update of an already-running pod.
+        await _watcher.HandlePodEventAsync(WatchEventType.Modified,
+            CreatePod(image: "nginx:1.28", resourceVersion: "7"));
+
+        await _podController.Received(2).CreatePodAsync(Arg.Any<V1Pod>(), Arg.Any<CancellationToken>());
+        Assert.Equal("Started", _emittedEvents[^1].Reason);
     }
 }

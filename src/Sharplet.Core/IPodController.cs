@@ -10,6 +10,15 @@ public interface IPodController
     /// <summary>
     /// Creates a new pod and schedules it onto the virtual node.
     /// </summary>
+    /// <remarks>
+    /// If this method throws, the kubelet writes the failure back to the API server so the pod
+    /// is not left stuck in Pending with no signal: the pod's status subresource is patched with
+    /// <c>reason: ProviderFailed</c>, the exception message, and a phase of <c>Pending</c> (or
+    /// <c>Failed</c> when the pod's restart policy is <c>Never</c>), and a <c>Warning</c>
+    /// <c>ProviderCreateFailed</c> event is recorded on the pod. Throwing is the supported way to
+    /// report a create failure; returning normally without having started the pod leaves the
+    /// pod Pending with no error visible to users.
+    /// </remarks>
     /// <param name="pod"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
@@ -18,6 +27,10 @@ public interface IPodController
     /// <summary>
     /// Updates an existing pod on the virtual node.
     /// </summary>
+    /// <remarks>
+    /// If this method throws, the kubelet records a <c>Warning</c> <c>ProviderUpdateFailed</c>
+    /// event on the pod (see <see cref="CreatePodAsync"/> for the full status-patching contract).
+    /// </remarks>
     /// <param name="pod"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
