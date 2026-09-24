@@ -2,6 +2,26 @@ apiVersion: v1
 entries:
   sharplet:
   - apiVersion: v2
+    appVersion: 0.4.0-alpha.20
+    created: "2026-09-24T23:11:26.839174299Z"
+    description: C# virtual kubelet (Kubernetes node agent) - reference implementation
+      of a virtual node for external systems, with a bundled mock provider that spoofs
+      running pods.
+    digest: c14e7746bedac45db274585a9b8c7c17e9eb812dfd025ad9830650b9cc887e0b
+    keywords:
+    - virtual-kubelet
+    - kubelet
+    - node-agent
+    - kubernetes
+    - csharp
+    maintainers:
+    - name: jimfim
+    name: sharplet
+    type: application
+    urls:
+    - https://github.com/jimfim/Sharplet/releases/download/sharplet-0.4.0-alpha.20/sharplet-0.4.0-alpha.20.tgz
+    version: 0.4.0-alpha.20
+  - apiVersion: v2
     appVersion: 0.4.0-alpha.18
     created: "2026-09-24T23:10:40.942502484Z"
     description: C# virtual kubelet (Kubernetes node agent) - reference implementation
@@ -51,4 +71,4 @@ entries:
     urls:
     - https://github.com/jimfim/Sharplet/releases/download/sharplet-0.1.0-alpha.26/sharplet-0.1.0-alpha.26.tgz
     version: 0.1.0-alpha.26
-generated: "2026-09-24T23:10:40.942521651Z"
+generated: "2026-09-24T23:11:26.839207982Z"
