@@ -198,3 +198,7 @@ helm uninstall sharplet
 kubectl delete -f test.yaml
 minikube stop        # or: minikube delete
 ```
+## Documentation
+
+- [Provider Guide](docs/index.md) — step-by-step guide for implementing `IPodController` and `INodeController`.
+- [Contributing](CONTRIBUTING.md) — code style, branch model, and workflow guidelines.

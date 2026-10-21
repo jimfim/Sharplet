@@ -13,15 +13,11 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # Runs on every push and pull request. Make the "CI / build" check required on
-  # protected branches (Settings > Branches > Required status checks; select
-  # "CI / build", not "SonarCloud / build") so a failing build blocks merges.
-  # The SonarCloud quality gate is informational only and never blocks merges.
+  # protected branches (Settings > Branches; select "CI / build") so a failing
+  # build blocks merges. The SonarCloud quality gate is informational only.
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
@@ -39,6 +35,25 @@ jobs:
     # do not match the resolved package versions
     - name: Build and Test
       run: dotnet build src -c Release -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
+
+  # Runs on every push and pull request (after a successful build). Validates that
+  # the Helm chart renders correctly and passes lint rules; prevents broken charts
+  # from reaching release pipelines.
+  helm-lint:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+    - name: Install Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
+
+    - name: Lint chart
+      run: helm lint ./charts/sharplet
+
+    - name: Render templates
+      run: helm template ./charts/sharplet > /dev/null
 
   # Only runs on pushes to main/develop (never on pull requests), so a failed
   # publish can neither block a merge nor leak artifacts from a PR.
@@ -85,7 +100,7 @@ jobs:
         versionSpec: '6.x'
 
     - name: Determine Version
-      id:   gitversion # id to later be referenced
+      id:   gitversion
       uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f  # v4
 
     - name: Configure Git
@@ -110,12 +125,8 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
-    # Build; same vulnerability and lock-file gates as the build job so a
-    # vulnerable or drifted package can never be published
     - name: Build and Test
       run: dotnet build -p:version=${{ steps.gitversion.outputs.semVer }} --configuration Release ./src -p:LockedMode=error -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
-
-    #release
 
     - name: push nuget packages
       env:
@@ -128,7 +139,7 @@ jobs:
       with:
         file: Dockerfile
         push: true
-        tags: jimjim/sharplet:${{ steps.gitversion.outputs.semVer }}
+        tags: jimfim/sharplet:${{ steps.gitversion.outputs.semVer }}
 
     ## helm
     - name: Helm Chart Update, Package and Push
