@@ -19,6 +19,8 @@ The goal of this project is to provide a simple way for developers to extend a K
 - **Container Lifecycle Management**: Manage the lifecycle of containers running on the virtual node, including creation, deletion, and updates.
 - **Resource Management**: Monitor and manage resource allocation and utilization on the virtual node.
 
+Contributing: See [CONTRIBUTING.md](CONTRIBUTING.md) for code style, branch model, and workflow guidelines.
+
 ## Purpose of this Repository
 
 You won't find a functional provider in this repository. This project is intended as a reference for others implementing 3rd party providers. We provide a mock provider in this repo as a reference: it just spoofs running pods on the virtual kubelet without any system to back them up.
