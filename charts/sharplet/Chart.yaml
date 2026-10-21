@@ -1,9 +1,11 @@
 apiVersion: v2
 name: sharplet
+home: https://github.com/jimfim/Sharplet
 description: "C# virtual kubelet (Kubernetes node agent) - reference implementation of a virtual node for external systems, with a bundled mock provider that spoofs running pods."
 type: application
+home: https://github.com/jimfim/Sharplet
 maintainers:
-  - name: jimjim
+  - name: jimfim
 keywords:
   - virtual-kubelet
   - kubelet
