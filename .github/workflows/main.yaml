@@ -100,7 +100,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Install Helm
-      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
+      uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e  # v5
 
     - name: Setup .NET Core
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6
